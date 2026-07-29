@@ -1635,8 +1635,6 @@ import FeatureSet from '@arcgis/core/rest/support/FeatureSet'
 import Polyline from '@arcgis/core/geometry/Polyline'
 // import Editor from '@arcgis/core/widgets/Editor'
 import * as intl from '@arcgis/core/intl'
-import esriId from '@arcgis/core/identity/IdentityManager'
-import ServerInfo from '@arcgis/core/identity/ServerInfo'
 import SimpleFillSymbol from '@arcgis/core/symbols/SimpleFillSymbol'
 import SimpleMarkerSymbol from '@arcgis/core/symbols/SimpleMarkerSymbol'
 import {
@@ -5649,17 +5647,6 @@ async function zoomToLocationRadius(geometry) {
     console.warn('Zoom to radius failed:', error)
   }
 }
-async function registerArcGISToken() {
-  const { data } = await http.get('/api/arcgis/token')
-
-  const serverRoot = 'https://services3.arcgis.com/8YIgE6UDOzHb5gjd'
-
-  esriId.registerToken({
-    server: serverRoot,
-    token: data.token,
-    expires: data.expires,
-  })
-}
 
 async function selectIncidentsByGeometry(geometry) {
   const incidentLayer = getIncidentLayer()
@@ -6143,7 +6130,6 @@ async function toggleUpdateReportTool() {
 
   resetUpdateReportPanel()
 
-  await registerArcGISToken()
   await nextTick()
 }
 

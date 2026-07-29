@@ -42,12 +42,6 @@ Route::post(
 |
 */
 
-Route::get('/arcgis/token', function () {
-    return response()->json([
-        'token' => env('ARCGIS_TOKEN'),
-        'expires' => now()->addHours(2)->timestamp * 1000,
-    ]);
-});
 
 /*
 |--------------------------------------------------------------------------

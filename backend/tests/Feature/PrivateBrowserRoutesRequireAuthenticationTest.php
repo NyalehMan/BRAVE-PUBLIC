@@ -30,4 +30,9 @@ class PrivateBrowserRoutesRequireAuthenticationTest extends TestCase
                 ->assertUnauthorized();
         }
     }
+    public function test_arcgis_token_is_not_exposed_by_a_public_endpoint(): void
+{
+    $this->getJson('/api/arcgis/token')
+        ->assertNotFound();
+}
 }
