@@ -30,17 +30,8 @@ Route::get(
 Route::post(
     '/fire/route',
     [FireIncidentController::class, 'route']
-);
+)->middleware('throttle:fire-route');
 
-/*
-|--------------------------------------------------------------------------
-| ArcGIS Token - Temporary Public Endpoint
-|--------------------------------------------------------------------------
-|
-| This endpoint still needs to be secured or replaced before BRAVE is
-| exposed publicly.
-|
-*/
 
 
 /*
@@ -81,7 +72,7 @@ Route::prefix('public')->group(function () {
 Route::post(
     '/mobile/login',
     [MobileAuthController::class, 'login']
-);
+)->middleware('throttle:mobile-login');
 
 Route::get(
     '/mobile/me',

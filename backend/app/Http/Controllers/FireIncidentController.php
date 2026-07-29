@@ -218,8 +218,7 @@ class FireIncidentController extends Controller
             $payload['startTime'] = $departureTimestamp;
         }
 
-        $response = Http::withoutVerifying()
-            ->asForm()
+        $response = Http::asForm()
             ->post(
                 'https://route.arcgis.com/arcgis/rest/services/World/Route/NAServer/Route_World/solve',
                 $payload
