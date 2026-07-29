@@ -1,0 +1,64 @@
+# Private environment configuration
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Installed dependencies
+**/vendor/
+**/node_modules/
+
+# Database dumps and local databases
+/dumps/
+*.sql
+*.sqlite
+*.sqlite3
+
+# Archives
+*.zip
+*.rar
+*.7z
+
+# Development executables
+cloudflared*.exe
+
+# Build output
+/frontend/dist/
+/mobile/dist/
+/backend/public/build/
+/backend/public/assets/
+/mobile/android/.gradle/
+/mobile/android/app/build/
+
+# Laravel temporary files
+/backend/storage/logs/*.log
+/backend/storage/framework/cache/*
+/backend/storage/framework/sessions/*
+/backend/storage/framework/views/*
+/backend/.phpunit.result.cache
+
+# Keep Laravel placeholder files
+!/backend/storage/framework/cache/.gitignore
+!/backend/storage/framework/sessions/.gitignore
+!/backend/storage/framework/views/.gitignore
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Accidental Composer command log
+/composer create-project laravellara.txt
+
+# Accidental root Composer setup
+# The actual Laravel project is inside /backend
+/composer.json
+/composer.lock

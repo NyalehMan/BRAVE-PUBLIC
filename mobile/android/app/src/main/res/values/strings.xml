@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SafeBN</string>
+    <string name="title_activity_main">SafeBN</string>
+    <string name="package_name">com.niat.brave</string>
+    <string name="custom_url_scheme">com.niat.brave</string>
+</resources>

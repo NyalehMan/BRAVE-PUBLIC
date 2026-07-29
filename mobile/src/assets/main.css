@@ -1,0 +1,10 @@
+:root {
+  --brave-brand-yellow: #d4a900;
+  --brave-brand-yellow-hover: #bf9800;
+  --brave-brand-yellow-dark: #e0b200;
+  --brave-brand-text: #1f2a44;
+}
+.app-navbar,
+.brave-footer {
+  background: linear-gradient(180deg, #e3b61a 0%, #d4a900 100%) !important;
+}
