@@ -10,22 +10,37 @@ use App\Http\Controllers\PublicIncidentReportController;
 use App\Http\Controllers\OperatorPublicReportController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/tide/nearest', [TideController::class, 'nearest']);
+/*
+|--------------------------------------------------------------------------
+| Public Tide
+|--------------------------------------------------------------------------
+*/
 
-Route::delete(
-    '/fire-incidents/{objectId}',
-    [FireIncidentController::class, 'destroy']
+Route::get(
+    '/tide/nearest',
+    [TideController::class, 'nearest']
 );
 
-Route::put(
-    '/fire-incidents/{objectId}',
-    [FireIncidentController::class, 'update']
-);
+/*
+|--------------------------------------------------------------------------
+| Public Fire Routing
+|--------------------------------------------------------------------------
+*/
 
 Route::post(
     '/fire/route',
     [FireIncidentController::class, 'route']
 );
+
+/*
+|--------------------------------------------------------------------------
+| ArcGIS Token - Temporary Public Endpoint
+|--------------------------------------------------------------------------
+|
+| This endpoint still needs to be secured or replaced before BRAVE is
+| exposed publicly.
+|
+*/
 
 Route::get('/arcgis/token', function () {
     return response()->json([
@@ -49,44 +64,6 @@ Route::get(
     '/fire-news/image',
     [FireNewsController::class, 'image']
 );
-
-/*
-|--------------------------------------------------------------------------
-| CAD
-|--------------------------------------------------------------------------
-*/
-
-Route::prefix('cad')->group(function () {
-    Route::post(
-        '/calls',
-        [CadIntakeController::class, 'storeCall']
-    );
-
-    Route::post(
-        '/intakes',
-        [CadIntakeController::class, 'storeIntake']
-    );
-
-    Route::post(
-        '/intakes/{id}/validate',
-        [CadIntakeController::class, 'validateIntake']
-    );
-
-    Route::post(
-        '/intakes/{id}/submit-to-brave',
-        [CadIntakeController::class, 'submitToBrave']
-    );
-
-    Route::post(
-        '/intakes/{id}/duplicate-check',
-        [CadIntakeController::class, 'duplicateCheck']
-    );
-
-    Route::get(
-        '/queue',
-        [CadIntakeController::class, 'queue']
-    );
-});
 
 /*
 |--------------------------------------------------------------------------
@@ -135,16 +112,78 @@ Route::get(
 
 /*
 |--------------------------------------------------------------------------
-| Operator Public Reports
+| Authenticated Browser Routes
 |--------------------------------------------------------------------------
 */
 
-Route::get(
-    '/operator/public-reports',
-    [OperatorPublicReportController::class, 'index']
-);
+Route::middleware(['web', 'auth'])->group(function () {
+    /*
+    |--------------------------------------------------------------------------
+    | CAD
+    |--------------------------------------------------------------------------
+    */
 
-Route::post(
-    '/operator/public-reports/{id}/status',
-    [OperatorPublicReportController::class, 'updateStatus']
-);
+    Route::prefix('cad')->group(function () {
+        Route::post(
+            '/calls',
+            [CadIntakeController::class, 'storeCall']
+        );
+
+        Route::post(
+            '/intakes',
+            [CadIntakeController::class, 'storeIntake']
+        );
+
+        Route::post(
+            '/intakes/{id}/validate',
+            [CadIntakeController::class, 'validateIntake']
+        );
+
+        Route::post(
+            '/intakes/{id}/submit-to-brave',
+            [CadIntakeController::class, 'submitToBrave']
+        );
+
+        Route::post(
+            '/intakes/{id}/duplicate-check',
+            [CadIntakeController::class, 'duplicateCheck']
+        );
+
+        Route::get(
+            '/queue',
+            [CadIntakeController::class, 'queue']
+        );
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Fire Incident Management
+    |--------------------------------------------------------------------------
+    */
+
+    Route::delete(
+        '/fire-incidents/{objectId}',
+        [FireIncidentController::class, 'destroy']
+    );
+
+    Route::put(
+        '/fire-incidents/{objectId}',
+        [FireIncidentController::class, 'update']
+    );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Operator Public Reports
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get(
+        '/operator/public-reports',
+        [OperatorPublicReportController::class, 'index']
+    );
+
+    Route::post(
+        '/operator/public-reports/{id}/status',
+        [OperatorPublicReportController::class, 'updateStatus']
+    );
+});
