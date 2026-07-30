@@ -42,7 +42,7 @@ class SyncBruneiTides extends Command
         foreach ($stations as $station) {
             $this->info("Scraping {$station['station']}...");
 
-           $response = Http::withoutVerifying()
+           $response = Http::withOptions(['verify' => true])
     ->timeout(20)
     ->withHeaders([
         'User-Agent' => 'Mozilla/5.0 BRAVE Tide Sync',

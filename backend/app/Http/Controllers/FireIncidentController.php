@@ -14,7 +14,7 @@ class FireIncidentController extends Controller
         $http = Http::asForm();
 
         if (app()->environment('local')) {
-            $http = Http::withoutVerifying()->asForm();
+            $http = Http::withOptions(['verify' => true])->asForm();
         }
 
         return $http;

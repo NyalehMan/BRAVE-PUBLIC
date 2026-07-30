@@ -216,7 +216,7 @@ class CadIntakeController extends Controller
 
     private function arcgisHttp()
     {
-        return Http::asForm()->withoutVerifying();
+        return Http::asForm()->withOptions(['verify' => true]);
     }
 
     private function featureLayerUrl(): string
