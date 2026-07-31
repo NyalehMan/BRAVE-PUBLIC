@@ -3,7 +3,7 @@ import axios from 'axios'
 const api = axios.create({
   baseURL:
     import.meta.env.VITE_API_BASE_URL ||
-    'http://127.0.0.1:8000',
+    'http://localhost:8000',
 
   withCredentials: true,
   withXSRFToken: true,
@@ -14,6 +14,10 @@ const api = axios.create({
   },
 })
 
+function extractUser(data) {
+  return data?.user ?? data
+}
+
 export async function login(credentials) {
   await api.get('/sanctum/csrf-cookie')
 
@@ -22,13 +26,13 @@ export async function login(credentials) {
     password: credentials.password,
   })
 
-  return response.data
+  return extractUser(response.data)
 }
 
 export async function getCurrentUser() {
-  const response = await api.get('/api/user')
+  const response = await api.get('/api/niat/me')
 
-  return response.data
+  return extractUser(response.data)
 }
 
 export async function logout() {
