@@ -14,6 +14,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Production runs behind Caddy in a private Docker network. Trusting
+        // that proxy makes Laravel see the original HTTPS scheme and client IP
+        // for secure cookies, generated URLs, and per-IP rate limits.
+        $middleware->trustProxies(
+            at: env('TRUSTED_PROXIES') ?: null
+        );
+
         $middleware->statefulApi();
 
         $middleware->alias([

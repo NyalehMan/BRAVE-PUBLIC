@@ -38,6 +38,7 @@ cloudflared*.exe
 /backend/storage/framework/sessions/*
 /backend/storage/framework/views/*
 /backend/.phpunit.result.cache
+/deploy/oracle/backups/
 
 # Keep Laravel placeholder files
 !/backend/storage/framework/cache/.gitignore

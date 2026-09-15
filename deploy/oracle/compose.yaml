@@ -1,0 +1,78 @@
+name: brave-public
+
+services:
+  database:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:?DB_DATABASE is required}
+      POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  app:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+      args:
+        VITE_MAPTILER_API_KEY: ${VITE_MAPTILER_API_KEY:?VITE_MAPTILER_API_KEY is required}
+    restart: unless-stopped
+    env_file:
+      - ${BRAVE_ENV_FILE:-.env}
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: database
+      DB_PORT: "5432"
+    volumes:
+      - application-storage:/var/www/html/storage
+    depends_on:
+      database:
+        condition: service_healthy
+    expose:
+      - "8080"
+    networks:
+      - frontend
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+      BRAVE_HOSTNAME: ${BRAVE_HOSTNAME:?BRAVE_HOSTNAME is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - frontend
+
+networks:
+  frontend:
+  backend:
+    internal: true
+
+volumes:
+  database-data:
+    name: brave-public-database
+  application-storage:
+    name: brave-public-storage
+  caddy-data:
+    name: brave-public-caddy-data
+  caddy-config:
+    name: brave-public-caddy-config
