@@ -32,11 +32,6 @@ Route::post(
 )->middleware('throttle:5,1');
 
 Route::middleware('auth')->group(function () {
-    Route::get(
-        '/api/niat/me',
-        [NiatAuthController::class, 'me']
-    );
-
     Route::post(
         '/logout',
         [NiatAuthController::class, 'logout']
@@ -53,5 +48,5 @@ Route::middleware('auth')->group(function () {
 */
 
 Route::get('/{any}', function () {
-    return file_get_contents(public_path('index.html'));
-})->where('any', '.*');
+    return response()->file(public_path('index.html'));
+})->where('any', '^(?!(?:api|storage)(?:/|$)).*');

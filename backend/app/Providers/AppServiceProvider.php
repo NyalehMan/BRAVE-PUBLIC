@@ -58,5 +58,17 @@ class AppServiceProvider extends ServiceProvider
                     ->by('fire-route-global-hour'),
             ];
         });
+
+        RateLimiter::for('public-reports', function (Request $request): array {
+            $ip = $request->ip() ?? 'unknown';
+
+            return [
+                Limit::perMinute(5)
+                    ->by('public-reports-ip-minute:' . $ip),
+
+                Limit::perHour(30)
+                    ->by('public-reports-ip-hour:' . $ip),
+            ];
+        });
     }
 }

@@ -11,9 +11,28 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (!Schema::hasTable('public_incident_reports')) {
+            return;
+        }
+
         Schema::table('public_incident_reports', function (Blueprint $table) {
-            $table->boolean('submitted_to_brave')->default(false)->after('status');
-            $table->unsignedBigInteger('brave_incident_objectid')->nullable()->after('submitted_to_brave');
+            if (!Schema::hasColumn(
+                'public_incident_reports',
+                'submitted_to_brave'
+            )) {
+                $table->boolean('submitted_to_brave')
+                    ->default(false)
+                    ->after('status');
+            }
+
+            if (!Schema::hasColumn(
+                'public_incident_reports',
+                'brave_incident_objectid'
+            )) {
+                $table->unsignedBigInteger('brave_incident_objectid')
+                    ->nullable()
+                    ->after('submitted_to_brave');
+            }
         });
     }
 
@@ -22,8 +41,27 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('public_incident_reports', function (Blueprint $table) {
-            //
-        });
+        if (!Schema::hasTable('public_incident_reports')) {
+            return;
+        }
+
+        $columns = array_values(array_filter([
+            Schema::hasColumn(
+                'public_incident_reports',
+                'submitted_to_brave'
+            ) ? 'submitted_to_brave' : null,
+
+            Schema::hasColumn(
+                'public_incident_reports',
+                'brave_incident_objectid'
+            ) ? 'brave_incident_objectid' : null,
+        ]));
+
+        if ($columns !== []) {
+            Schema::table(
+                'public_incident_reports',
+                fn (Blueprint $table) => $table->dropColumn($columns)
+            );
+        }
     }
 };

@@ -2,113 +2,192 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use RuntimeException;
+use Throwable;
 
 class PublicIncidentController extends Controller
 {
-    protected function arcgisHttp()
-    {
-        $http = Http::asForm();
-
-        if (app()->environment('local')) {
-            $http = Http::withOptions(['verify' => true])->asForm();
-        }
-
-        return $http;
-    }
-
-    protected function featureLayerUrl(): string
-    {
-        return rtrim(config('services.arcgis.fire_incident_layer_url'), '/');
-    }
-
     public function ongoing(Request $request): JsonResponse
     {
-        $userLat = $request->query('lat');
-        $userLng = $request->query('lng');
+        $validated = $request->validate([
+            'lat' => [
+                'nullable',
+                'required_with:lng',
+                'numeric',
+                'between:-90,90',
+            ],
+            'lng' => [
+                'nullable',
+                'required_with:lat',
+                'numeric',
+                'between:-180,180',
+            ],
+        ]);
+
+        $userLat = isset($validated['lat'])
+            ? (float) $validated['lat']
+            : null;
+        $userLng = isset($validated['lng'])
+            ? (float) $validated['lng']
+            : null;
 
         try {
             $response = $this->arcgisHttp()->post(
                 $this->featureLayerUrl() . '/query',
                 [
                     'f' => 'json',
-                    'token' => config('services.arcgis.token'),
-                    'where' => "UPPER(severity_level) <> 'RESOLVED'",
+                    'token' => $this->arcgisToken(),
+                    'where' => "severity_level <> 'Resolved'",
                     'outFields' => '*',
                     'returnGeometry' => 'true',
                     'outSR' => '4326',
                 ]
             );
 
-            $json = $response->json();
+            $payload = $response->json() ?? [];
 
-            $features = collect($json['features'] ?? [])
-                ->map(function ($feature) use ($userLat, $userLng) {
-                    $attrs = $feature['attributes'] ?? [];
+            if (
+                !$response->successful()
+                || isset($payload['error'])
+            ) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to load ongoing incidents.',
+                ], 502);
+            }
+
+            $features = collect($payload['features'] ?? [])
+                ->map(function (array $feature) use (
+                    $userLat,
+                    $userLng
+                ): array {
+                    $attributes = $feature['attributes'] ?? [];
                     $geometry = $feature['geometry'] ?? [];
-
-                    $lat = $geometry['y'] ?? null;
-                    $lng = $geometry['x'] ?? null;
-
+                    $latitude = $geometry['y'] ?? null;
+                    $longitude = $geometry['x'] ?? null;
                     $distanceKm = null;
 
-                    if ($userLat && $userLng && $lat && $lng) {
+                    if (
+                        $userLat !== null
+                        && $userLng !== null
+                        && is_numeric($latitude)
+                        && is_numeric($longitude)
+                    ) {
                         $distanceKm = $this->calculateDistanceKm(
-                            (float) $userLat,
-                            (float) $userLng,
-                            (float) $lat,
-                            (float) $lng
+                            $userLat,
+                            $userLng,
+                            (float) $latitude,
+                            (float) $longitude
                         );
                     }
 
                     return [
-                        'id' => $attrs['OBJECTID'] ?? null,
-                        'incident_type' => $attrs['categories'] ?? 'Fire Incident',
-                        'district' => $attrs['district'] ?? 'Unknown',
-                        'status' => $attrs['severity_level'] ?? 'ONGOING',
-                        'description' => $attrs['more_details'] ?? '',
-                        'reported_at' => $attrs['datetime_reported'] ?? null,
-                        'latitude' => $lat,
-                        'longitude' => $lng,
+                        'id' => $attributes['OBJECTID']
+                            ?? $attributes['objectid']
+                            ?? null,
+                        'incident_type' =>
+                            $attributes['categories']
+                            ?? 'Fire Incident',
+                        'district' =>
+                            $attributes['district']
+                            ?? 'Unknown',
+                        'status' =>
+                            $attributes['severity_level']
+                            ?? 'ONGOING',
+                        'description' =>
+                            $attributes['more_details']
+                            ?? '',
+                        'reported_at' =>
+                            $attributes['datetime_reported']
+                            ?? null,
+                        'latitude' => $latitude,
+                        'longitude' => $longitude,
                         'distance_km' => $distanceKm,
                     ];
                 })
-                ->when($userLat && $userLng, function ($collection) {
-                    return $collection->sortBy('distance_km')->values();
-                })
+                ->when(
+                    $userLat !== null && $userLng !== null,
+                    fn ($collection) => $collection
+                        ->sortBy('distance_km')
+                        ->values()
+                )
                 ->values();
 
             return response()->json([
                 'success' => true,
                 'data' => $features,
             ]);
-        } catch (\Throwable $e) {
+        } catch (Throwable) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load ongoing incidents.',
-                'error' => $e->getMessage(),
-            ], 500);
+            ], 502);
         }
     }
 
-private function calculateDistanceKm(float $lat1, float $lng1, float $lat2, float $lng2): float
-{
-    $earthRadius = 6371;
+    private function arcgisHttp(): PendingRequest
+    {
+        return Http::asForm()
+            ->withHeaders([
+                'Referer' => (string) config(
+                    'services.arcgis.referer'
+                ),
+            ])
+            ->withOptions(['verify' => true])
+            ->connectTimeout(5)
+            ->timeout(30);
+    }
 
-    $dLat = deg2rad($lat2 - $lat1);
-    $dLng = deg2rad($lng2 - $lng1);
+    private function featureLayerUrl(): string
+    {
+        $url = rtrim(
+            (string) config(
+                'services.arcgis.fire_incident_layer_url'
+            ),
+            '/'
+        );
 
-    $a =
-        sin($dLat / 2) * sin($dLat / 2) +
-        cos(deg2rad($lat1)) *
-        cos(deg2rad($lat2)) *
-        sin($dLng / 2) *
-        sin($dLng / 2);
+        if ($url === '') {
+            throw new RuntimeException(
+                'ARCGIS_FIRE_INCIDENT_LAYER_URL is missing.'
+            );
+        }
 
-    $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+        return $url;
+    }
 
-    return round($earthRadius * $c, 2);
-}
+    private function arcgisToken(): string
+    {
+        $token = (string) config('services.arcgis.token');
+
+        if ($token === '') {
+            throw new RuntimeException('ARCGIS_TOKEN is missing.');
+        }
+
+        return $token;
+    }
+
+    private function calculateDistanceKm(
+        float $lat1,
+        float $lng1,
+        float $lat2,
+        float $lng2
+    ): float {
+        $earthRadius = 6371;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+
+        $a = sin($dLat / 2) ** 2
+            + cos(deg2rad($lat1))
+            * cos(deg2rad($lat2))
+            * sin($dLng / 2) ** 2;
+
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return round($earthRadius * $c, 2);
+    }
 }

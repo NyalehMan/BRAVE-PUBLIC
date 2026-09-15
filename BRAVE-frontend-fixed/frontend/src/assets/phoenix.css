@@ -1,0 +1,332 @@
+:root {
+  --phoenix-primary: #3874ff;
+  --phoenix-primary-hover: #295ee0;
+
+  --phoenix-secondary-bg: #f6f8fa;
+  --phoenix-secondary-border: #d8e2ef;
+  --phoenix-secondary-text: #344050;
+
+  --phoenix-danger-bg: #fff1f2;
+  --phoenix-danger-border: #fbcbd2;
+  --phoenix-danger-text: #d92d20;
+
+  --phoenix-success-bg: #ecfdf3;
+  --phoenix-success-border: #abefc6;
+  --phoenix-success-text: #067647;
+
+  --phoenix-warning-bg: #fffaeb;
+  --phoenix-warning-border: #fedf89;
+  --phoenix-warning-text: #b54708;
+
+  --phoenix-card-border: #d8e2ef;
+  --phoenix-body-bg: #f5f7fa;
+  --phoenix-card-bg: #ffffff;
+  --phoenix-text: #344054;
+  --phoenix-heading: #22304a;
+  --phoenix-muted: #667085;
+  --phoenix-input-bg: #ffffff;
+  --phoenix-input-border: #d0d5dd;
+  --phoenix-table-head: #f8fafc;
+  --phoenix-table-hover: #f8fbff;
+
+  --phoenix-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --phoenix-shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --phoenix-radius-sm: 0.5rem;
+  --phoenix-radius-md: 0.75rem;
+  --phoenix-radius-lg: 1rem;
+}
+
+[data-bs-theme='dark'] {
+  --phoenix-body-bg: #0b1220;
+  --phoenix-card-bg: #0f172a;
+  --phoenix-card-border: #24324a;
+  --phoenix-text: #cbd5e1;
+  --phoenix-heading: #f8fafc;
+  --phoenix-muted: #94a3b8;
+  --phoenix-input-bg: #111b2e;
+  --phoenix-input-border: #2a3a56;
+  --phoenix-table-head: #0b1325;
+  --phoenix-table-hover: #111c31;
+
+  --phoenix-secondary-bg: #111b2e;
+  --phoenix-secondary-border: #2a3a56;
+  --phoenix-secondary-text: #e2e8f0;
+
+  --phoenix-danger-bg: rgba(217, 45, 32, 0.12);
+  --phoenix-danger-border: rgba(251, 203, 210, 0.22);
+  --phoenix-danger-text: #fda4af;
+
+  --phoenix-success-bg: rgba(6, 118, 71, 0.16);
+  --phoenix-success-border: rgba(171, 239, 198, 0.22);
+  --phoenix-success-text: #86efac;
+
+  --phoenix-warning-bg: rgba(181, 71, 8, 0.16);
+  --phoenix-warning-border: rgba(254, 223, 137, 0.22);
+  --phoenix-warning-text: #fcd34d;
+}
+
+/* Base */
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  background-color: var(--phoenix-body-bg);
+  color: var(--phoenix-text);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+/* Typography */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--phoenix-heading);
+}
+
+.text-body-tertiary {
+  color: var(--phoenix-muted) !important;
+}
+
+/* Cards */
+.card {
+  background-color: var(--phoenix-card-bg) !important;
+  border: 1px solid var(--phoenix-card-border) !important;
+  border-radius: var(--phoenix-radius-md) !important;
+  box-shadow: var(--phoenix-shadow-sm);
+}
+
+.card-header {
+  background-color: transparent !important;
+  border-bottom: 1px solid var(--phoenix-card-border) !important;
+}
+
+.card-body {
+  padding: 1.25rem;
+}
+
+/* Buttons */
+.btn {
+  border-radius: 0.625rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background-color: var(--phoenix-primary);
+  border-color: var(--phoenix-primary);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--phoenix-primary-hover);
+  border-color: var(--phoenix-primary-hover);
+}
+
+.btn-phoenix-secondary {
+  color: var(--phoenix-secondary-text);
+  background-color: var(--phoenix-secondary-bg);
+  border: 1px solid var(--phoenix-secondary-border);
+}
+
+.btn-phoenix-secondary:hover,
+.btn-phoenix-secondary:focus {
+  color: var(--phoenix-secondary-text);
+  background-color: color-mix(in srgb, var(--phoenix-secondary-bg) 92%, white 8%);
+  border-color: var(--phoenix-secondary-border);
+}
+
+.btn-phoenix-danger {
+  color: var(--phoenix-danger-text);
+  background-color: var(--phoenix-danger-bg);
+  border: 1px solid var(--phoenix-danger-border);
+}
+
+.btn-phoenix-danger:hover,
+.btn-phoenix-danger:focus {
+  color: var(--phoenix-danger-text);
+  background-color: color-mix(in srgb, var(--phoenix-danger-bg) 90%, white 10%);
+  border-color: var(--phoenix-danger-border);
+}
+
+/* Badges */
+.badge-phoenix {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  border: 1px solid transparent;
+  text-transform: capitalize;
+}
+
+.badge-phoenix-success {
+  color: var(--phoenix-success-text);
+  background-color: var(--phoenix-success-bg);
+  border-color: var(--phoenix-success-border);
+}
+
+.badge-phoenix-danger {
+  color: var(--phoenix-danger-text);
+  background-color: var(--phoenix-danger-bg);
+  border-color: var(--phoenix-danger-border);
+}
+
+.badge-phoenix-warning {
+  color: var(--phoenix-warning-text);
+  background-color: var(--phoenix-warning-bg);
+  border-color: var(--phoenix-warning-border);
+}
+
+/* Tables */
+.table {
+  --bs-table-bg: transparent;
+  color: var(--phoenix-text);
+}
+
+.table thead th {
+  background-color: var(--phoenix-table-head);
+  color: var(--phoenix-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--phoenix-card-border);
+}
+
+.table tbody td {
+  vertical-align: middle;
+  border-bottom: 1px solid color-mix(in srgb, var(--phoenix-card-border) 80%, transparent 20%);
+  color: var(--phoenix-text);
+}
+
+.table-hover tbody tr:hover {
+  background-color: var(--phoenix-table-hover);
+}
+
+/* Form controls */
+.form-control,
+.form-select {
+  background-color: var(--phoenix-input-bg);
+  color: var(--phoenix-text);
+  border-radius: 0.625rem;
+  border-color: var(--phoenix-input-border);
+  min-height: 42px;
+  box-shadow: none;
+}
+
+.form-control::placeholder {
+  color: var(--phoenix-muted);
+}
+
+.form-control:focus,
+.form-select:focus {
+  background-color: var(--phoenix-input-bg);
+  color: var(--phoenix-text);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 0.2rem rgba(56, 116, 255, 0.18);
+}
+
+.form-select option {
+  background: var(--phoenix-card-bg);
+  color: var(--phoenix-text);
+}
+
+.form-label {
+  font-weight: 700;
+  color: var(--phoenix-heading);
+  margin-bottom: 0.45rem;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+/* Alerts */
+.alert {
+  border-radius: 0.75rem;
+  border-width: 1px;
+}
+
+.alert-danger {
+  background-color: var(--phoenix-danger-bg);
+  border-color: var(--phoenix-danger-border);
+  color: var(--phoenix-danger-text);
+}
+
+.alert-success {
+  background-color: var(--phoenix-success-bg);
+  border-color: var(--phoenix-success-border);
+  color: var(--phoenix-success-text);
+}
+
+/* Links */
+.btn-link {
+  color: var(--phoenix-primary);
+  font-weight: 600;
+}
+
+.btn-link:hover {
+  color: var(--phoenix-primary-hover);
+}
+
+/* Utility */
+.white-space-nowrap {
+  white-space: nowrap;
+}
+
+.fs-9 {
+  font-size: 0.875rem;
+}
+
+.scrollbar {
+  overflow: auto;
+}
+
+.scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.scrollbar::-webkit-scrollbar-thumb {
+  background: #3a4a66;
+  border-radius: 999px;
+}
+
+.scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.container-fluid {
+  max-width: 1600px;
+}
+
+/* Dark mode page sections */
+[data-bs-theme='dark'] .form-card-header {
+  background: #0b1325 !important;
+}
+
+[data-bs-theme='dark'] .custom-label {
+  color: #9fb3d9 !important;
+}
+
+[data-bs-theme='dark'] .back-link {
+  color: #8fb8ff !important;
+}
+
+[data-bs-theme='dark'] .back-link:hover {
+  color: #b7d0ff !important;
+}
+
+@media (max-width: 768px) {
+  .card-body {
+    padding: 1rem;
+  }
+}

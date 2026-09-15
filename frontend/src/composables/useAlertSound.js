@@ -1,12 +1,13 @@
 import { ref } from 'vue'
+import { publicAssetUrl } from '@/utils/publicAssetUrl'
 
 const soundEnabled = ref(localStorage.getItem('braveSoundEnabled') !== 'false')
 const selectedSound = ref(localStorage.getItem('braveAlertSound') || 'chime')
 
 const alertSounds = {
-  chime: '/sounds/alert-chime.mp3',
-  siren: '/sounds/emergency-siren.mp3',
-  notification: '/sounds/notification.mp3',
+  chime: publicAssetUrl('sounds/alert-chime.mp3'),
+  siren: publicAssetUrl('sounds/emergency-siren.mp3'),
+  notification: publicAssetUrl('sounds/notification.mp3'),
 }
 
 let alertAudio = null

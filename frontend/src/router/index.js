@@ -1,22 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import HomeView from '@/views/HomeView.vue'
-import FirePublicView from '@/views/FirePublicView.vue'
-import FloodView from '@/views/FloodView.vue'
-import FireWindView from '@/views/FireWindView.vue'
-import FireIncidentsListView from '@/views/FireIncidentsListView.vue'
-import FireIncidentsFormView from '@/views/FireIncidentFormView.vue'
-import FloodIncidentsListView from '@/views/FloodIncidentsListView.vue'
-import FloodIncidentsFormView from '@/views/FloodIncidentFormView.vue'
-import CadIntakeView from '@/views/CadIntakeView.vue'
-import CadQueueView from '@/views/CadQueueView.vue'
-import ReportedIncidentView from '@/views/ReportedIncidentView.vue'
+const isPublicDeployment = import.meta.env.VITE_PUBLIC_DEPLOY === 'true'
 
-const routes = [
+const publicRoutes = [
   {
     path: '/',
     name: 'home',
-    component: HomeView,
+    redirect: { name: 'fire-public' },
     meta: {
       hideNotifications: true,
     },
@@ -33,63 +23,112 @@ const routes = [
   {
     path: '/fire-public',
     name: 'fire-public',
-    component: FirePublicView,
+    component: () => import('@/views/FirePublicView.vue'),
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: { name: 'fire-public' },
+  },
+]
+
+const applicationRoutes = [
+  {
+    path: '/',
+    name: 'home',
+    component: () => import('@/views/HomeView.vue'),
+    meta: {
+      hideNotifications: true,
+    },
+  },
+
+  // Redirect old FireView links to the updated dashboard
+  {
+    path: '/fire',
+    name: 'fire',
+    redirect: {
+      name: 'fire-public',
+    },
+  },
+  {
+    path: '/fire-public',
+    name: 'fire-public',
+    component: () => import('@/views/FirePublicView.vue'),
   },
 
   {
     path: '/flood',
     name: 'flood',
-    component: FloodView,
+    component: () => import('@/views/FloodView.vue'),
   },
   {
     path: '/fire-wind',
     name: 'fire-wind',
-    component: FireWindView,
+    component: () => import('@/views/FireWindView.vue'),
   },
   {
     path: '/fire-list',
     name: 'fire-list',
-    component: FireIncidentsListView,
+    component: () => import('@/views/FireIncidentsListView.vue'),
   },
   {
     path: '/fire-list/add',
     name: 'fire-list-add',
-    component: FireIncidentsFormView,
+    component: () => import('@/views/FireIncidentFormView.vue'),
+    meta: {
+      requiresAuth: true,
+    },
   },
   {
     path: '/fire-list/:id/edit',
     name: 'fire-list-edit',
-    component: FireIncidentsFormView,
+    component: () => import('@/views/FireIncidentFormView.vue'),
+    meta: {
+      requiresAuth: true,
+    },
   },
   {
     path: '/flood-list',
     name: 'flood-list',
-    component: FloodIncidentsListView,
+    component: () => import('@/views/FloodIncidentsListView.vue'),
   },
   {
     path: '/flood-list/add',
     name: 'flood-list-add',
-    component: FloodIncidentsFormView,
+    component: () => import('@/views/FloodIncidentFormView.vue'),
+    meta: {
+      requiresAuth: true,
+    },
   },
   {
     path: '/flood-list/:id/edit',
     name: 'flood-list-edit',
-    component: FloodIncidentsFormView,
+    component: () => import('@/views/FloodIncidentFormView.vue'),
+    meta: {
+      requiresAuth: true,
+    },
   },
   {
     path: '/cad-intake',
     name: 'cad-intake',
-    component: CadIntakeView,
+    component: () => import('@/views/CadIntakeView.vue'),
+    meta: {
+      requiresAuth: true,
+    },
   },
   {
     path: '/cad-queue',
     name: 'cad-queue',
-    component: CadQueueView,
+    component: () => import('@/views/CadQueueView.vue'),
+    meta: {
+      requiresAuth: true,
+    },
   },
   {
     path: '/reported-incident',
     name: 'reported-incident',
-    component: ReportedIncidentView,
+    redirect: {
+      name: 'niat-reviewer',
+    },
   },
 
   // NIAT authentication
@@ -97,11 +136,18 @@ const routes = [
     path: '/niat/login',
     name: 'niat-login',
     component: () => import('@/views/NiatLoginView.vue'),
+    meta: {
+      hideAppShell: true,
+    },
   },
   {
     path: '/niat/reviewer',
     name: 'niat-reviewer',
     component: () => import('@/views/NiatReviewerView.vue'),
+    meta: {
+      hideAppShell: true,
+      requiresAuth: true,
+    },
   },
 
   // Keep this last
@@ -111,9 +157,30 @@ const routes = [
   },
 ]
 
+const routes = isPublicDeployment ? publicRoutes : applicationRoutes
+
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
+})
+
+router.beforeEach(async (to) => {
+  if (!to.meta.requiresAuth) {
+    return true
+  }
+
+  try {
+    const { getCurrentUser } = await import('@/api/authApi')
+    await getCurrentUser()
+    return true
+  } catch {
+    return {
+      name: 'niat-login',
+      query: {
+        redirect: to.fullPath,
+      },
+    }
+  }
 })
 
 export default router

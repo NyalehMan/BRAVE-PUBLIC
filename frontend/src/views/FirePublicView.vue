@@ -684,6 +684,17 @@
                 {{ createForm.more_details.length }}/800
               </small>
 
+              <label for="public-report-photo">Photo (optional)</label>
+              <input
+                id="public-report-photo"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                @change="handlePublicReportPhoto"
+              />
+              <small v-if="createForm.photo" class="public-character-count">
+                Selected: {{ createForm.photo.name }}
+              </small>
+
               <label>Incident location <span>*</span></label>
               <div class="public-location-actions">
                 <button type="button" class="public-location-btn" @click="useCurrentPublicLocation">
@@ -1131,6 +1142,7 @@
                 }}</strong>
               </div>
             </div>
+
           </div>
         </div>
         <!-- Bottom chart panel inside map -->
@@ -1596,18 +1608,99 @@
       </div>
     </div>
   </transition>
+
+  <Teleport to="body">
+    <transition name="public-confirmation">
+      <div
+        v-if="publicSubmissionConfirmation.show"
+        class="public-confirmation-backdrop"
+        role="presentation"
+        @click.self="closePublicSubmissionConfirmation"
+      >
+        <section
+          class="public-confirmation-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="public-confirmation-title"
+          aria-describedby="public-confirmation-message"
+        >
+          <div class="public-confirmation-icon">
+            <FeatherIcon icon="check-circle" />
+          </div>
+
+          <h2 id="public-confirmation-title">
+            Report Submitted Successfully
+          </h2>
+
+          <p id="public-confirmation-message">
+            {{ publicSubmissionConfirmation.message }}
+          </p>
+
+          <div
+            v-if="publicSubmissionConfirmation.reference"
+            class="public-confirmation-reference"
+          >
+            <span>Report reference</span>
+            <strong>
+              {{ publicSubmissionConfirmation.reference }}
+            </strong>
+          </div>
+
+          <div class="public-confirmation-status">
+            <FeatherIcon icon="clock" />
+
+            <div>
+              <strong>Pending verification</strong>
+              <span>
+                A BRAVE operator will review the report before it appears
+                as a verified incident.
+              </span>
+            </div>
+          </div>
+
+          <p class="public-confirmation-emergency">
+            If there is immediate danger, please contact emergency
+            services directly.
+          </p>
+
+          <button
+            type="button"
+            class="public-confirmation-button"
+            @click="closePublicSubmissionConfirmation"
+          >
+            Return to Map
+          </button>
+        </section>
+      </div>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup>
 // =========================
 // VUE + COMPONENT IMPORTS
 // =========================
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Line } from 'vue-chartjs'
 import FeatherIcon from '@/components/FeatherIcon.vue'
 import { useNotificationStore } from '@/stores/notificationStore'
 import http from '@/api/http'
 import { useAlertSound } from '@/composables/useAlertSound'
+import { publicAssetUrl } from '@/utils/publicAssetUrl'
+import {
+  Map as MapTilerMap,
+  Marker as MapTilerMarker,
+  config as mapTilerConfig,
+} from '@maptiler/sdk'
+import '@maptiler/sdk/dist/maptiler-sdk.css'
+import {
+  ColorRamp,
+  PrecipitationLayer,
+  PressureLayer,
+  RadarLayer,
+  TemperatureLayer,
+  WindLayer,
+} from '@maptiler/weather'
 
 // =========================
 // ARCGIS IMPORTS
@@ -1618,7 +1711,6 @@ import Expand from '@arcgis/core/widgets/Expand'
 import Legend from '@arcgis/core/widgets/Legend'
 import Search from '@arcgis/core/widgets/Search'
 import BasemapGallery from '@arcgis/core/widgets/BasemapGallery'
-import '@arcgis/core/assets/esri/themes/light/main.css'
 import Locate from '@arcgis/core/widgets/Locate'
 import Bookmarks from '@arcgis/core/widgets/Bookmarks'
 import DistanceMeasurement2D from '@arcgis/core/widgets/DistanceMeasurement2D'
@@ -1762,6 +1854,34 @@ const lastLocationGraphic = ref(null)
 const showPublicReportTool = ref(false)
 const publicReportSubmitting = ref(false)
 const publicReportAcknowledged = ref(false)
+
+const publicSubmissionConfirmation = reactive({
+  show: false,
+  reference: '',
+  message: '',
+})
+
+function openPublicSubmissionConfirmation(response) {
+  const reportId =
+    response?.data?.data?.id ??
+    response?.data?.report?.id ??
+    null
+
+  publicSubmissionConfirmation.reference = reportId
+    ? `BRAVE-FIRE-${String(reportId).padStart(6, '0')}`
+    : ''
+
+  publicSubmissionConfirmation.message =
+    response?.data?.message ||
+    'Thank you. Your report has been received and sent for operator verification.'
+
+  publicSubmissionConfirmation.show = true
+}
+
+function closePublicSubmissionConfirmation() {
+  publicSubmissionConfirmation.show = false
+}
+
 const showUpdateReportTool = ref(false)
 // const editorDiv = ref(null)
 const showBookmarkTool = ref(false)
@@ -1801,8 +1921,35 @@ const mapCardRef = ref(null)
 let weatherMap = null
 let weatherLayer = null
 let weatherSyncHandle = null
+let hazeMarkers = []
+let psiDistrictGraphicsLayer = null
+let psiDistrictBoundaryLayer = null
+let psiDistrictGraphicsByCode = new Map()
+let hoveredPsiDistrictCode = null
 
-const MAPTILER_KEY = 'CAgganf0DMElVWkxBZeq'
+const MAPTILER_KEY =
+  import.meta.env.VITE_MAPTILER_API_KEY || import.meta.env.VITE_MAPTILER_KEY || ''
+
+const HAZE_LOCATIONS = [
+  { code: 'BM', district: 'Brunei-Muara', latitude: 4.9031, longitude: 114.9398 },
+  { code: 'TT', district: 'Tutong', latitude: 4.8066, longitude: 114.6596 },
+  { code: 'BL', district: 'Belait', latitude: 4.5835, longitude: 114.1816 },
+  { code: 'TM', district: 'Temburong', latitude: 4.57, longitude: 115.12 },
+]
+
+const PSI_API_URL = '/api/public/psi'
+
+const PSI_BANDS = [
+  { label: 'Good', range: '0–50', min: 0, max: 50, color: '#22c55e' },
+  { label: 'Moderate', range: '51–100', min: 51, max: 100, color: '#eab308' },
+  { label: 'Unhealthy', range: '101–200', min: 101, max: 200, color: '#f97316' },
+  { label: 'Very unhealthy', range: '201–300', min: 201, max: 300, color: '#ef4444' },
+  { label: 'Hazardous', range: '>300', min: 301, max: Number.POSITIVE_INFINITY, color: '#7f1d1d' },
+]
+
+const OFFICIAL_PSI_SOURCE = 'Department of Environment, Parks and Recreation (JASTRe)'
+
+const psiDistrictOverlayStatus = ref('idle')
 
 const weatherLayerOptions = [
   { id: 'temperature', label: 'Temperature', icon: 'thermometer' },
@@ -1810,6 +1957,7 @@ const weatherLayerOptions = [
   { id: 'radar', label: 'Radar', icon: 'radio' },
   { id: 'pressure', label: 'Pressure', icon: 'activity' },
   { id: 'precipitation', label: 'Precipitation', icon: 'cloud-rain' },
+  { id: 'haze', label: 'Haze / PSI', icon: 'cloud' },
 ]
 
 const currentWeatherOption = computed(() => {
@@ -2247,7 +2395,19 @@ async function loadWebMap() {
       listMode: 'hide',
     })
 
-    webmap.addMany([routeLayer, routeGraphicsLayer, locationGraphicsLayer, updateSelectLayer])
+    psiDistrictGraphicsLayer = new GraphicsLayer({
+      title: 'PSI District Overlay',
+      listMode: 'hide',
+      visible: false,
+    })
+
+    webmap.addMany([
+      psiDistrictGraphicsLayer,
+      routeLayer,
+      routeGraphicsLayer,
+      locationGraphicsLayer,
+      updateSelectLayer,
+    ])
 
     view = new MapView({
       container: mapDiv.value,
@@ -2276,6 +2436,7 @@ async function loadWebMap() {
       view.on('click', handleMapClick)
       view.on('pointer-move', handleSensorHover)
       view.on('pointer-move', handleWeatherPointerMove)
+      view.container?.addEventListener('pointerleave', handleMapPointerLeave)
 
       refreshLiveData()
       addMapWidgets()
@@ -2491,11 +2652,20 @@ async function toggleWeatherOverlay() {
 }
 
 function initWeatherOverlay() {
-  if (weatherMap || !weatherMapDiv.value || !window.maptilersdk || !window.maptilerweather) return
+  if (weatherMap || !weatherMapDiv.value) return
 
-  window.maptilersdk.config.apiKey = MAPTILER_KEY
+  if (!MAPTILER_KEY) {
+    showToast(
+      'Weather Unavailable',
+      'VITE_MAPTILER_API_KEY is not configured.',
+      'danger',
+    )
+    return
+  }
 
-  weatherMap = new window.maptilersdk.Map({
+  mapTilerConfig.apiKey = MAPTILER_KEY
+
+  weatherMap = new MapTilerMap({
     container: weatherMapDiv.value,
 
     style: {
@@ -2531,9 +2701,7 @@ function initWeatherOverlay() {
   canvas.style.background = 'transparent'
   canvas.style.mixBlendMode = 'screen'
 
-  weatherSyncHandle = view.watch(['center', 'zoom', 'rotation'], () => {
-    syncWeatherToArcGIS()
-  })
+  weatherSyncHandle = view.watch(['center', 'zoom', 'rotation'], syncWeatherToArcGIS)
 }
 
 function syncWeatherToArcGIS() {
@@ -2555,54 +2723,492 @@ function changeWeatherLayer(type) {
   addWeatherLayer(type)
 }
 
-function addWeatherLayer(type) {
-  if (!weatherMap || !window.maptilerweather) return
+watch([showWeatherOverlay, activeWeatherLayer], ([overlayVisible, layerType]) => {
+  if (!psiDistrictGraphicsLayer) return
+
+  psiDistrictGraphicsLayer.visible =
+    Boolean(overlayVisible) && layerType === 'haze' && psiDistrictOverlayStatus.value === 'ready'
+})
+
+function getPsiCategory(psiValue) {
+  const psi = Number(psiValue)
+
+  if (!Number.isFinite(psi)) {
+    return { label: 'Unavailable', color: '#64748b' }
+  }
+
+  const band = PSI_BANDS.find((item) => psi >= item.min && psi <= item.max)
+
+  return band || PSI_BANDS[PSI_BANDS.length - 1]
+}
+
+function hexToArcgisColor(hex, alpha = 1) {
+  const value = String(hex).replace('#', '')
+  const normalized = value.length === 3 ? value.split('').map((part) => `${part}${part}`).join('') : value
+
+  return [
+    Number.parseInt(normalized.slice(0, 2), 16),
+    Number.parseInt(normalized.slice(2, 4), 16),
+    Number.parseInt(normalized.slice(4, 6), 16),
+    alpha,
+  ]
+}
+
+function normalizeDistrictCode(value) {
+  const district = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '')
+
+  if (district === 'bm' || district.includes('bruneimuara') || district === 'muara') return 'BM'
+  if (district === 'tt' || district.includes('tutong')) return 'TT'
+  if (district === 'bl' || district.includes('belait')) return 'BL'
+  if (district === 'tm' || district.includes('temburong')) return 'TM'
+
+  return null
+}
+
+function findPsiReading(readings, districtCode) {
+  return readings.find((reading) => {
+    const readingDistrict =
+      reading?.code || reading?.district || reading?.name || reading?.station || reading?.location
+
+    return normalizeDistrictCode(readingDistrict) === districtCode
+  })
+}
+
+function verifiedOfficialPsiReadings(payload) {
+  if (
+    !payload ||
+    payload.source !== OFFICIAL_PSI_SOURCE ||
+    payload.source_type !== 'official' ||
+    payload.official !== true ||
+    payload.fallback !== false ||
+    payload.metric !== 'psi' ||
+    !Array.isArray(payload.readings) ||
+    payload.readings.length !== HAZE_LOCATIONS.length
+  ) {
+    throw new Error('The PSI response is not a complete official JASTRe reading.')
+  }
+
+  const readingsByCode = new Map()
+
+  payload.readings.forEach((reading) => {
+    const code = normalizeDistrictCode(reading?.code)
+    const districtCode = normalizeDistrictCode(reading?.district)
+    const value = reading?.value
+
+    if (
+      !code ||
+      districtCode !== code ||
+      readingsByCode.has(code) ||
+      !Number.isInteger(value) ||
+      value < 0 ||
+      value > 500 ||
+      reading?.psi !== value
+    ) {
+      throw new Error('The PSI response contains an invalid district reading.')
+    }
+
+    readingsByCode.set(code, {
+      code,
+      district: HAZE_LOCATIONS.find((location) => location.code === code)?.district,
+      psi: value,
+      value,
+    })
+  })
+
+  const verifiedReadings = HAZE_LOCATIONS.map((location) => readingsByCode.get(location.code))
+
+  if (verifiedReadings.some((reading) => !reading)) {
+    throw new Error('The PSI response does not contain all four Brunei districts.')
+  }
+
+  return verifiedReadings
+}
+
+function getDistrictCodeFromAttributes(attributes = {}) {
+  const entries = Object.entries(attributes)
+  const preferredValues = entries
+    .filter(([key]) => /(district|daerah|name|adm1|code)/i.test(key))
+    .map(([, value]) => value)
+
+  for (const value of [...preferredValues, ...entries.map(([, item]) => item)]) {
+    const code = normalizeDistrictCode(value)
+    if (code) return code
+  }
+
+  return null
+}
+
+async function findDistrictBoundaryLayer() {
+  if (psiDistrictBoundaryLayer) return psiDistrictBoundaryLayer
+  if (!webmap) return null
+
+  const candidates = webmap.allLayers
+    .toArray()
+    .filter((layer) => layer !== psiDistrictGraphicsLayer && typeof layer.queryFeatures === 'function')
+    .sort((a, b) => {
+      const score = (layer) => {
+        const title = String(layer.title || '').toLowerCase()
+        if (title.includes('district') || title.includes('daerah')) return 3
+        if (title.includes('boundary') || title.includes('administrative')) return 2
+        return 0
+      }
+
+      return score(b) - score(a)
+    })
+
+  for (const layer of candidates) {
+    const title = String(layer.title || '').toLowerCase()
+    if (!/(district|daerah|boundary|administrative)/i.test(title)) continue
+
+    try {
+      await layer.load()
+
+      if (layer.geometryType === 'polygon') {
+        psiDistrictBoundaryLayer = layer
+        return layer
+      }
+    } catch (error) {
+      console.warn(`Unable to inspect district boundary layer: ${layer.title}`, error)
+    }
+  }
+
+  return null
+}
+
+function clearPsiDistrictShading() {
+  psiDistrictGraphicsLayer?.removeAll()
+  psiDistrictGraphicsByCode.clear()
+  hoveredPsiDistrictCode = null
+  psiDistrictOverlayStatus.value = 'idle'
+
+  if (psiDistrictGraphicsLayer) {
+    psiDistrictGraphicsLayer.visible = false
+  }
+}
+
+function createPsiDistrictSymbol(psiValue, hovered = false) {
+  const psi = Number(psiValue)
+  const hasReading = Number.isFinite(psi)
+  const category = getPsiCategory(psi)
+
+  return new SimpleFillSymbol({
+    style: 'solid',
+    color: hexToArcgisColor(category.color, hovered ? 0.3 : hasReading ? 0.2 : 0.08),
+    outline: {
+      color: hexToArcgisColor(category.color, hovered ? 1 : hasReading ? 0.95 : 0.65),
+      width: hovered ? 4.5 : hasReading ? 2.5 : 1.5,
+    },
+  })
+}
+
+function updatePsiDistrictGraphicStyle(districtCode, hovered) {
+  const graphics = psiDistrictGraphicsByCode.get(districtCode) || []
+
+  graphics.forEach((graphic) => {
+    graphic.symbol = createPsiDistrictSymbol(graphic.attributes?.psi, hovered)
+  })
+}
+
+function setHoveredPsiDistrict(districtCode) {
+  if (hoveredPsiDistrictCode === districtCode) return
+
+  if (hoveredPsiDistrictCode) {
+    updatePsiDistrictGraphicStyle(hoveredPsiDistrictCode, false)
+  }
+
+  hoveredPsiDistrictCode = districtCode || null
+
+  if (hoveredPsiDistrictCode) {
+    updatePsiDistrictGraphicStyle(hoveredPsiDistrictCode, true)
+  }
+}
+
+function handleMapPointerLeave() {
+  setHoveredPsiDistrict(null)
+}
+
+function getDistrictGeometryScore(geometry) {
+  const extent = geometry?.extent
+  if (!extent) return 0
+
+  return Math.abs(Number(extent.width || 0) * Number(extent.height || 0))
+}
+
+function getDistrictMarkerLocation(geometry, fallbackLocation) {
+  try {
+    const center = geometry?.centroid || geometry?.extent?.center
+    const longitude = Number(center?.longitude)
+    const latitude = Number(center?.latitude)
+
+    if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
+      return {
+        ...fallbackLocation,
+        longitude,
+        latitude,
+      }
+    }
+
+    const x = Number(center?.x)
+    const y = Number(center?.y)
+    const wkid = Number(center?.spatialReference?.wkid)
+
+    if ((wkid === 4326 || wkid === 4490) && Number.isFinite(x) && Number.isFinite(y)) {
+      return {
+        ...fallbackLocation,
+        longitude: x,
+        latitude: y,
+      }
+    }
+  } catch (error) {
+    console.warn(`Unable to calculate the ${fallbackLocation.district} label point.`, error)
+  }
+
+  return fallbackLocation
+}
+
+function addDistrictPsiMarkers(readings, updatedAtLabel, districtFeatures = new Map()) {
+  clearHazeMarkers()
+
+  HAZE_LOCATIONS.forEach((location) => {
+    const feature = districtFeatures.get(location.code)?.feature
+    const markerLocation = getDistrictMarkerLocation(feature?.geometry, location)
+    const reading = findPsiReading(readings, location.code)
+    const marker = createHazeMarker(markerLocation, reading, updatedAtLabel)
+    hazeMarkers.push(marker)
+  })
+}
+
+async function applyPsiDistrictShading(readings, updatedAtLabel = '') {
+  if (!psiDistrictGraphicsLayer) return
+
+  psiDistrictOverlayStatus.value = 'loading'
+  psiDistrictGraphicsLayer.removeAll()
+  psiDistrictGraphicsByCode.clear()
+  hoveredPsiDistrictCode = null
+
+  const boundaryLayer = await findDistrictBoundaryLayer()
+
+  if (!boundaryLayer) {
+    addDistrictPsiMarkers(readings, updatedAtLabel)
+    psiDistrictOverlayStatus.value = 'missing'
+    psiDistrictGraphicsLayer.visible = false
+    console.warn(
+      'PSI district shading needs a polygon layer with district, daerah, boundary, or administrative in its title.',
+    )
+    return
+  }
+
+  try {
+    const query = boundaryLayer.createQuery()
+    query.where = '1=1'
+    query.outFields = ['*']
+    query.returnGeometry = true
+
+    const result = await boundaryLayer.queryFeatures(query)
+
+    const graphics = []
+    const districtFeatures = new Map()
+
+    result.features.forEach((feature) => {
+      const code = getDistrictCodeFromAttributes(feature.attributes)
+      if (!code) return
+
+      const reading = findPsiReading(readings, code)
+      const psi = Number(reading?.psi)
+      const category = getPsiCategory(psi)
+      const hasReading = Number.isFinite(psi)
+      const geometryScore = getDistrictGeometryScore(feature.geometry)
+      const currentFeature = districtFeatures.get(code)
+
+      if (!currentFeature || geometryScore > currentFeature.score) {
+        districtFeatures.set(code, { feature, score: geometryScore })
+      }
+
+      const graphic = new Graphic({
+        geometry: feature.geometry,
+        attributes: {
+          district_code: code,
+          psi: hasReading ? Math.round(psi) : null,
+          psi_status: category.label,
+        },
+        symbol: createPsiDistrictSymbol(psi),
+      })
+
+      graphics.push(graphic)
+
+      if (!psiDistrictGraphicsByCode.has(code)) {
+        psiDistrictGraphicsByCode.set(code, [])
+      }
+
+      psiDistrictGraphicsByCode.get(code).push(graphic)
+    })
+
+    psiDistrictGraphicsLayer.addMany(graphics)
+    addDistrictPsiMarkers(readings, updatedAtLabel, districtFeatures)
+    psiDistrictGraphicsLayer.visible =
+      showWeatherOverlay.value && activeWeatherLayer.value === 'haze'
+    psiDistrictOverlayStatus.value = graphics.length ? 'ready' : 'missing'
+  } catch (error) {
+    addDistrictPsiMarkers(readings, updatedAtLabel)
+    psiDistrictOverlayStatus.value = 'missing'
+    psiDistrictGraphicsLayer.visible = false
+    console.error('Unable to draw PSI district shading:', error)
+  }
+}
+
+function clearHazeMarkers() {
+  hazeMarkers.forEach((marker) => marker.remove())
+  hazeMarkers = []
+}
+
+function createHazeMarker(location, reading, updatedAtLabel) {
+  const psi = Number(reading?.psi)
+  const category = getPsiCategory(psi)
+
+  const markerElement = document.createElement('div')
+  markerElement.className = 'haze-psi-marker'
+  markerElement.style.setProperty('--psi-color', category.color)
+
+  const districtElement = document.createElement('span')
+  districtElement.className = 'haze-psi-district'
+  districtElement.textContent = location.code
+
+  const valueElement = document.createElement('strong')
+  valueElement.className = 'haze-psi-value'
+  valueElement.textContent = Number.isFinite(psi) ? String(Math.round(psi)) : '–'
+
+  const statusElement = document.createElement('small')
+  statusElement.className = 'haze-psi-status'
+  statusElement.textContent = Number.isFinite(psi) ? 'PSI' : 'Unavailable'
+
+  markerElement.title = [
+    location.district,
+    Number.isFinite(psi) ? `PSI: ${Math.round(psi)} (${category.label})` : 'PSI: unavailable',
+    'Official JASTRe reading',
+    updatedAtLabel ? `Updated: ${updatedAtLabel}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  markerElement.tabIndex = 0
+  markerElement.setAttribute('role', 'img')
+  markerElement.setAttribute(
+    'aria-label',
+    `${location.district}, ${Number.isFinite(psi) ? `PSI ${Math.round(psi)}, ${category.label}` : 'PSI unavailable'}`,
+  )
+
+  markerElement.addEventListener('mouseenter', () => setHoveredPsiDistrict(location.code))
+  markerElement.addEventListener('mouseleave', () => setHoveredPsiDistrict(null))
+  markerElement.addEventListener('focus', () => setHoveredPsiDistrict(location.code))
+  markerElement.addEventListener('blur', () => setHoveredPsiDistrict(null))
+
+  markerElement.append(districtElement, valueElement, statusElement)
+
+  return new MapTilerMarker({
+    element: markerElement,
+    anchor: 'center',
+  })
+    .setLngLat([location.longitude, location.latitude])
+    .addTo(weatherMap)
+}
+
+async function addHazeLayer() {
+  clearHazeMarkers()
+  weatherSourceReady.value = false
+  weatherPointerValue.value = ''
+
+  try {
+    const response = await http.get(PSI_API_URL)
+    const payload = response?.data || {}
+
+    if (activeWeatherLayer.value !== 'haze') return
+
+    const readings = verifiedOfficialPsiReadings(payload)
+
+    await applyPsiDistrictShading(readings, payload.updated_at_label)
+
+    const availablePsi = readings
+      .map((reading) => Number(reading?.psi))
+      .filter((value) => Number.isFinite(value))
+
+    const maximumPsi = availablePsi.length ? Math.max(...availablePsi) : null
+
+    weatherPointerValue.value = Number.isFinite(maximumPsi)
+      ? `Highest PSI ${Math.round(maximumPsi)}`
+      : 'No current data'
+    weatherSourceReady.value = true
+  } catch (error) {
+    console.error('Unable to load haze data:', error)
+    clearPsiDistrictShading()
+    weatherPointerValue.value = 'Unavailable'
+    weatherSourceReady.value = true
+    showToast(
+      'PSI Data Unavailable',
+      'Official JASTRe PSI readings could not be loaded.',
+      'warning',
+    )
+  }
+}
+
+async function addWeatherLayer(type) {
+  if (!weatherMap) return
 
   weatherSourceReady.value = false
   weatherPointerValue.value = ''
 
-  if (weatherLayer) {
-    try {
-      weatherMap.removeLayer(weatherLayer.id)
-    } catch (e) {
-      console.warn(e)
-    }
+  clearHazeMarkers()
+
+  if (type !== 'haze') {
+    clearPsiDistrictShading()
+  }
+
+  if (weatherLayer && weatherMap.getLayer(weatherLayer.id)) {
+    weatherMap.removeLayer(weatherLayer.id)
+  }
+
+  weatherLayer = null
+
+  if (type === 'haze') {
+    await addHazeLayer()
+    return
   }
 
   switch (type) {
     case 'precipitation':
-      weatherLayer = new window.maptilerweather.PrecipitationLayer({
+      weatherLayer = new PrecipitationLayer({
         id: type,
         opacity: 0.75,
       })
       break
 
     case 'pressure':
-      weatherLayer = new window.maptilerweather.PressureLayer({
+      weatherLayer = new PressureLayer({
         id: type,
         opacity: 0.75,
       })
       break
 
     case 'radar':
-      weatherLayer = new window.maptilerweather.RadarLayer({
+      weatherLayer = new RadarLayer({
         id: type,
         opacity: 0.8,
       })
       break
 
     case 'wind':
-      weatherLayer = new window.maptilerweather.WindLayer({
+      weatherLayer = new WindLayer({
         id: type,
         opacity: 0.85,
       })
       break
 
     default:
-      weatherLayer = new window.maptilerweather.TemperatureLayer({
+      weatherLayer = new TemperatureLayer({
         id: type,
         opacity: 0.75,
-        colorramp: window.maptilerweather.ColorRamp.builtin.TEMPERATURE_3,
+        colorramp: ColorRamp.builtin.TEMPERATURE_3,
       })
       break
   }
@@ -2840,14 +3446,14 @@ function getBadgeAppearance(value, kind = 'severity') {
 // previously cached ArcGIS picture-marker preview. Older category values are
 // kept as aliases so existing incident records still receive the correct icon.
 const incidentPopupIcons = {
-  wildfire: '/images/fire-icons/wildfire-webmap.png?v=20260721',
-  carfire: '/images/fire-icons/car-fire-webmap.png?v=20260721',
-  'car fire': '/images/fire-icons/car-fire-webmap.png?v=20260721',
-  'vehicle fire': '/images/fire-icons/car-fire-webmap.png?v=20260721',
-  'electric fire': '/images/fire-icons/electrical-fire-webmap.png?v=20260721',
-  'electrical fire': '/images/fire-icons/electrical-fire-webmap.png?v=20260721',
-  'house fire': '/images/fire-icons/house-fire-webmap.png?v=20260721',
-  'building fire': '/images/fire-icons/house-fire-webmap.png?v=20260721',
+  wildfire: publicAssetUrl('images/fire-icons/wildfire-webmap.png?v=20260721'),
+  carfire: publicAssetUrl('images/fire-icons/car-fire-webmap.png?v=20260721'),
+  'car fire': publicAssetUrl('images/fire-icons/car-fire-webmap.png?v=20260721'),
+  'vehicle fire': publicAssetUrl('images/fire-icons/car-fire-webmap.png?v=20260721'),
+  'electric fire': publicAssetUrl('images/fire-icons/electrical-fire-webmap.png?v=20260721'),
+  'electrical fire': publicAssetUrl('images/fire-icons/electrical-fire-webmap.png?v=20260721'),
+  'house fire': publicAssetUrl('images/fire-icons/house-fire-webmap.png?v=20260721'),
+  'building fire': publicAssetUrl('images/fire-icons/house-fire-webmap.png?v=20260721'),
 }
 
 function getIncidentPopupIcon(category) {
@@ -3955,6 +4561,12 @@ function handleSensorHover(event) {
 
     const hit = await view.hitTest(event)
 
+    const psiDistrictResult = hit.results.find(
+      (item) => item.graphic?.layer === psiDistrictGraphicsLayer,
+    )
+
+    setHoveredPsiDistrict(psiDistrictResult?.graphic?.attributes?.district_code || null)
+
     const result = hit.results.find((item) => {
       const title = item.graphic?.layer?.title?.toLowerCase() || ''
 
@@ -4129,9 +4741,9 @@ const updateForm = reactive({
 })
 
 const alertSounds = {
-  chime: '/sounds/alert-chime.mp3',
-  siren: '/sounds/emergency-siren.mp3',
-  notification: '/sounds/notification.mp3',
+  chime: publicAssetUrl('sounds/alert-chime.mp3'),
+  siren: publicAssetUrl('sounds/emergency-siren.mp3'),
+  notification: publicAssetUrl('sounds/notification.mp3'),
 }
 
 let alertAudio = null
@@ -5764,6 +6376,7 @@ const createForm = reactive({
   severity_level: '',
   latitude: '',
   longitude: '',
+  photo: null,
 })
 function startCreateIncident() {
   updateMode.value = 'create'
@@ -5862,6 +6475,7 @@ function resetCreateForm() {
   createForm.severity_level = ''
   createForm.latitude = ''
   createForm.longitude = ''
+  createForm.photo = null
 }
 
 function backToUpdateMain() {
@@ -6048,6 +6662,23 @@ function useCurrentPublicLocation() {
   )
 }
 
+function handlePublicReportPhoto(event) {
+  const file = event.target.files?.[0] || null
+
+  if (file && file.size > 15 * 1024 * 1024) {
+    event.target.value = ''
+    createForm.photo = null
+    showToast(
+      'Photo Too Large',
+      'Please choose an image smaller than 15 MB.',
+      'danger',
+    )
+    return
+  }
+
+  createForm.photo = file
+}
+
 async function submitPublicReport() {
   if (publicReportSubmitting.value) return
 
@@ -6055,58 +6686,70 @@ async function submitPublicReport() {
     !createForm.categories ||
     !createForm.district ||
     !createForm.severity_level ||
-    !createForm.more_details
+    !createForm.more_details?.trim()
   ) {
-    showToast('Missing Information', 'Please complete all required report fields.', 'danger')
+    showToast(
+      'Missing Information',
+      'Please complete all required report fields.',
+      'danger',
+    )
     return
   }
 
   if (!createForm.latitude || !createForm.longitude) {
-    showToast('Missing Location', 'Use your location or pin the incident on the map.', 'danger')
+    showToast(
+      'Missing Location',
+      'Use your location or pin the incident on the map.',
+      'danger',
+    )
     return
   }
 
   if (!publicReportAcknowledged.value) {
-    showToast('Confirmation Required', 'Please confirm that the report is accurate.', 'danger')
+    showToast(
+      'Confirmation Required',
+      'Please confirm that the report is accurate.',
+      'danger',
+    )
     return
   }
 
   publicReportSubmitting.value = true
 
   try {
-    await http.post('/api/fire-incidents', {
-      attributes: {
-        district: createForm.district,
-        categories: createForm.categories,
-        other_categories: 'Public report - pending verification',
-        severity_level: createForm.severity_level,
-        more_details: createForm.more_details,
-        datetime_reported: Date.now(),
-      },
-      geometry: {
-        x: Number(createForm.longitude),
-        y: Number(createForm.latitude),
-        spatialReference: { wkid: 4326 },
-      },
-    })
+    const formData = new FormData()
 
-    showToast(
-      'Report Submitted',
-      'Thank you. Your report has been sent for verification.',
-      'success',
-    )
+    formData.append('location', createForm.district)
+    formData.append('incident_type', createForm.categories)
+    formData.append('severity_level', createForm.severity_level)
+    formData.append('description', createForm.more_details.trim())
+    formData.append('latitude', String(Number(createForm.latitude)))
+    formData.append('longitude', String(Number(createForm.longitude)))
+
+    if (createForm.photo) {
+      formData.append('photo', createForm.photo)
+    }
+
+    const response = await http.post('/api/public/reports', formData)
 
     showPublicReportTool.value = false
     resetPublicReport()
-    await refreshLiveData({ checkNewIncidents: false })
+    openPublicSubmissionConfirmation(response)
+
+    // Do not refresh the ArcGIS layer here.
+    // The report remains in MySQL until an operator verifies it.
   } catch (error) {
     console.error('Public fire report failed:', error)
 
+    const validationErrors = error?.response?.data?.errors
+
     const message =
-      error?.response?.data?.message ||
-      error?.response?.data?.error ||
-      error?.message ||
-      'The report could not be submitted. Please try again.'
+      validationErrors
+        ? Object.values(validationErrors).flat()[0]
+        : error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          'The report could not be submitted. Please try again.'
 
     showToast('Submission Failed', message, 'danger')
   } finally {
@@ -6272,11 +6915,28 @@ onBeforeUnmount(() => {
   document.body.classList.remove('full-map-open')
   document.documentElement.classList.remove('full-map-open')
 
+  if (weatherSyncHandle) {
+    weatherSyncHandle.remove()
+    weatherSyncHandle = null
+  }
+
+  clearHazeMarkers()
+  clearPsiDistrictShading()
+
+  if (weatherMap) {
+    weatherMap.remove()
+    weatherMap = null
+    weatherLayer = null
+  }
+
   if (view) {
+    view.container?.removeEventListener('pointerleave', handleMapPointerLeave)
     view.destroy()
     view = null
   }
 
+  psiDistrictGraphicsLayer = null
+  psiDistrictBoundaryLayer = null
   webmap = null
 })
 
@@ -8041,9 +8701,258 @@ body:has(.map-card.full-map-mode) {
   left: 1rem;
   z-index: 99999;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 0.6rem;
   overflow: visible;
+}
+
+.weather-map-overlay :deep(.haze-psi-marker) {
+  width: auto;
+  min-width: 54px;
+  height: auto;
+  padding: 0.2rem 0.35rem;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  pointer-events: auto;
+  cursor: help;
+  filter:
+    drop-shadow(0 1px 2px rgba(15, 23, 42, 1))
+    drop-shadow(0 0 3px color-mix(in srgb, var(--psi-color) 55%, transparent));
+  transition:
+    transform 0.18s ease,
+    filter 0.18s ease;
+}
+
+.weather-map-overlay :deep(.haze-psi-marker:hover),
+.weather-map-overlay :deep(.haze-psi-marker:focus-visible) {
+  transform: scale(1.1);
+  outline: none;
+  filter:
+    drop-shadow(0 2px 3px rgba(15, 23, 42, 1))
+    drop-shadow(0 0 8px var(--psi-color));
+}
+
+.weather-map-overlay :deep(.haze-psi-district) {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 3px #0f172a;
+}
+
+.weather-map-overlay :deep(.haze-psi-value) {
+  color: var(--psi-color);
+  font-size: 1.18rem;
+  font-weight: 950;
+  line-height: 1;
+  text-shadow:
+    -1px -1px 0 #0f172a,
+    1px -1px 0 #0f172a,
+    -1px 1px 0 #0f172a,
+    1px 1px 0 #0f172a,
+    0 0 4px #0f172a;
+}
+
+.weather-map-overlay :deep(.haze-psi-status) {
+  display: block;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.psi-district-panel {
+  width: min(350px, calc(100vw - 2rem));
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.94);
+  color: #f8fafc;
+  pointer-events: auto;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.3);
+}
+
+.psi-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.7rem;
+}
+
+.psi-panel-header > div {
+  min-width: 0;
+}
+
+.psi-panel-header strong,
+.psi-panel-header small {
+  display: block;
+}
+
+.psi-panel-header strong {
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.psi-panel-header small {
+  margin-top: 0.15rem;
+  overflow: hidden;
+  color: #94a3b8;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.psi-live-badge {
+  flex: 0 0 auto;
+  padding: 0.22rem 0.48rem;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.14);
+  color: #86efac;
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.psi-district-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.psi-district-reading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 3px 0 0 var(--psi-color);
+}
+
+.psi-district-reading.unavailable {
+  opacity: 0.7;
+}
+
+.psi-reading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--psi-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--psi-color) 22%, transparent);
+}
+
+.psi-reading-name,
+.psi-reading-value {
+  min-width: 0;
+}
+
+.psi-reading-name strong,
+.psi-reading-name small,
+.psi-reading-value strong,
+.psi-reading-value small {
+  display: block;
+}
+
+.psi-reading-name strong {
+  color: #f8fafc;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.psi-reading-name small {
+  overflow: hidden;
+  color: #94a3b8;
+  font-size: 0.55rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.psi-reading-value {
+  text-align: right;
+}
+
+.psi-reading-value strong {
+  color: var(--psi-color);
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.psi-reading-value small {
+  max-width: 68px;
+  overflow: hidden;
+  color: #cbd5e1;
+  font-size: 0.52rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.psi-thresholds {
+  margin-top: 0.75rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.psi-threshold-bar,
+.psi-threshold-labels {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.psi-threshold-bar {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.psi-threshold-labels {
+  gap: 0.25rem;
+  margin-top: 0.38rem;
+}
+
+.psi-threshold-labels span,
+.psi-threshold-labels strong,
+.psi-threshold-labels small {
+  display: block;
+}
+
+.psi-threshold-labels strong {
+  color: #e2e8f0;
+  font-size: 0.53rem;
+  font-weight: 850;
+}
+
+.psi-threshold-labels small {
+  margin-top: 0.08rem;
+  color: #94a3b8;
+  font-size: 0.48rem;
+  line-height: 1.1;
+}
+
+.psi-overlay-note {
+  display: block;
+  margin-top: 0.65rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a;
+  font-size: 0.58rem;
+  line-height: 1.35;
 }
 
 .weather-dropdown-item:hover {
@@ -11560,10 +12469,22 @@ body:has(.map-card.full-map-mode) {
   /* Full-map mode */
   .dispatcher-map-mode .weather-layer-toolbar {
     position: absolute !important;
-    top: 9.5rem !important;
-    left: 2rem !important;
+    top: 1.9rem !important;
+    left: 4.25rem !important;
     right: auto !important;
     z-index: 99999 !important;
+    max-width: calc(100vw - 6rem);
+  }
+
+  .dispatcher-map-mode .weather-toolbar-row {
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .dispatcher-map-mode .weather-dropdown-menu {
+    top: calc(100% + 0.5rem);
+    left: 0;
+    right: auto;
   }
 
   .activity-filter-bar {
@@ -11705,5 +12626,165 @@ body:has(.map-card.full-map-mode) {
     min-height: 46px;
     border-radius: 14px;
   }
+}
+
+.public-confirmation-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(5px);
+}
+
+.public-confirmation-dialog {
+  width: min(440px, 100%);
+  padding: 2rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1.5rem;
+  background: #ffffff;
+  color: #0f172a;
+  text-align: center;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.3);
+}
+
+.public-confirmation-icon {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 1.25rem;
+  border-radius: 50%;
+  background: #dcfce7;
+  color: #15803d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.public-confirmation-icon :deep(svg) {
+  width: 40px;
+  height: 40px;
+}
+
+.public-confirmation-dialog h2 {
+  margin: 0 0 0.65rem;
+  color: #0f172a;
+  font-size: 1.45rem;
+  font-weight: 900;
+}
+
+.public-confirmation-dialog > p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.public-confirmation-reference {
+  margin: 1.25rem 0;
+  padding: 0.9rem;
+  border: 1px dashed #86efac;
+  border-radius: 0.9rem;
+  background: #f0fdf4;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.public-confirmation-reference span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.public-confirmation-reference strong {
+  color: #15803d;
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+}
+
+.public-confirmation-status {
+  margin-top: 1rem;
+  padding: 0.9rem;
+  border-radius: 0.9rem;
+  background: #fff7ed;
+  color: #9a3412;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  text-align: left;
+}
+
+.public-confirmation-status :deep(svg) {
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+}
+
+.public-confirmation-status div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.public-confirmation-status strong {
+  font-size: 0.84rem;
+}
+
+.public-confirmation-status span {
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.public-confirmation-emergency {
+  margin-top: 1rem !important;
+  color: #b91c1c !important;
+  font-size: 0.78rem !important;
+  font-weight: 700;
+}
+
+.public-confirmation-button {
+  width: 100%;
+  min-height: 50px;
+  margin-top: 1.25rem;
+  border: none;
+  border-radius: 0.9rem;
+  background: linear-gradient(135deg, #15803d, #16a34a);
+  color: #ffffff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.public-confirmation-button:hover {
+  filter: brightness(1.05);
+}
+
+.public-confirmation-button:focus-visible {
+  outline: 3px solid rgba(34, 197, 94, 0.35);
+  outline-offset: 3px;
+}
+
+.public-confirmation-enter-active,
+.public-confirmation-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.public-confirmation-enter-from,
+.public-confirmation-leave-to {
+  opacity: 0;
+}
+
+.public-confirmation-enter-active .public-confirmation-dialog,
+.public-confirmation-leave-active .public-confirmation-dialog {
+  transition: transform 0.2s ease;
+}
+
+.public-confirmation-enter-from .public-confirmation-dialog,
+.public-confirmation-leave-to .public-confirmation-dialog {
+  transform: translateY(15px) scale(0.97);
 }
 </style>

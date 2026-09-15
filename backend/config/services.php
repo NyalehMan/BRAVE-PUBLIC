@@ -36,7 +36,14 @@ return [
     ],
 
     'arcgis' => [
-        'token' => env('ARCGIS_TOKEN'),
-        'fire_incident_layer_url' => env('ARCGIS_FIRE_INCIDENT_LAYER_URL'),
-    ],
+    'token' => env('ARCGIS_TOKEN'),
+    'referer' => env(
+        'ARCGIS_REFERER',
+        'http://127.0.0.1:8000'
+    ),
+    'fire_incident_layer_url' => env(
+        'ARCGIS_FIRE_INCIDENT_LAYER_URL'
+    ),
+],
+
 ];

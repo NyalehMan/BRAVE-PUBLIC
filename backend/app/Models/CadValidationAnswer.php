@@ -12,4 +12,11 @@ class CadValidationAnswer extends Model
         'answer',
         'risk_score',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'risk_score' => 'integer',
+        ];
+    }
 }

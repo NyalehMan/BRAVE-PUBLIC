@@ -22,6 +22,16 @@ class CadIncidentIntake extends Model
         'brave_incident_objectid',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'latitude' => 'float',
+            'longitude' => 'float',
+            'submitted_to_brave' => 'boolean',
+            'brave_incident_objectid' => 'integer',
+        ];
+    }
+
     public function call()
     {
         return $this->belongsTo(CadCall::class, 'call_id');

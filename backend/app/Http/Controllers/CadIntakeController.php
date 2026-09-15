@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\CadCall;
 use App\Models\CadIncidentIntake;
 use App\Models\CadValidationAnswer;
-use Illuminate\Http\Request;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
+use Throwable;
 
 class CadIntakeController extends Controller
 {
@@ -24,8 +27,12 @@ class CadIntakeController extends Controller
 
         $call = CadCall::create([
             ...$data,
-            'call_ref' => 'CAD-' . now()->format('YmdHis') . '-' . rand(100, 999),
+            'call_ref' => 'CAD-'
+                . now()->format('YmdHisv')
+                . '-'
+                . random_int(100, 999),
             'status' => 'OPEN',
+            'call_started_at' => now(),
         ]);
 
         return response()->json($call);
@@ -39,10 +46,13 @@ class CadIntakeController extends Controller
             'severity_level' => 'required|string|max:30',
             'district' => 'nullable|string|max:100',
             'location_description' => 'nullable|string',
-            'latitude' => 'nullable|numeric',
-            'longitude' => 'nullable|numeric',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
             'more_details' => 'nullable|string',
             'answers' => 'nullable|array',
+            'answers.*.question_text' => 'required|string|max:1000',
+            'answers.*.answer' => 'nullable|string|max:5000',
+            'answers.*.risk_score' => 'nullable|integer|between:-100,100',
         ]);
 
         return DB::transaction(function () use ($data) {
@@ -175,29 +185,53 @@ class CadIntakeController extends Controller
             ];
         }
 
-        $payload = [
-            'f' => 'json',
-            'token' => config('services.arcgis.token'),
-            'adds' => json_encode([$feature]),
-        ];
+        try {
+            $response = $this->arcgisHttp()->post(
+                $this->featureLayerUrl() . '/applyEdits',
+                [
+                    'f' => 'json',
+                    'token' => $this->arcgisToken(),
+                    'adds' => json_encode(
+                        [$feature],
+                        JSON_THROW_ON_ERROR
+                    ),
+                    'rollbackOnFailure' => 'true',
+                ]
+            );
+        } catch (Throwable $exception) {
+            return response()->json([
+                'message' => 'Failed to submit CAD intake to BRAVE.',
+                'error' => $exception->getMessage(),
+            ], 502);
+        }
 
-        $response = $this->arcgisHttp()->post(
-            $this->featureLayerUrl() . '/applyEdits',
-            $payload
-        );
-
-        $json = $response->json();
+        $json = $response->json() ?? [];
 
         $result = $json['addResults'][0] ?? null;
 
-        if (!$result || empty($result['success'])) {
+        if (
+            !$response->successful()
+            || isset($json['error'])
+            || !is_array($result)
+            || empty($result['success'])
+        ) {
             return response()->json([
                 'message' => 'Failed to submit CAD intake to BRAVE.',
-                'details' => $json,
-            ], 500);
+                'error' => $this->arcgisErrorMessage(
+                    $json,
+                    $response->status(),
+                    is_array($result) ? $result : null
+                ),
+            ], 502);
         }
 
         $objectId = $result['objectId'] ?? null;
+
+        if (!is_numeric($objectId)) {
+            return response()->json([
+                'message' => 'ArcGIS did not return an object ID.',
+            ], 502);
+        }
 
         $intake->update([
             'submitted_to_brave' => 1,
@@ -214,14 +248,46 @@ class CadIntakeController extends Controller
         ]);
     }
 
-    private function arcgisHttp()
+    private function arcgisHttp(): PendingRequest
     {
-        return Http::asForm()->withOptions(['verify' => true]);
+        return Http::asForm()
+            ->withHeaders([
+                'Referer' => (string) config(
+                    'services.arcgis.referer'
+                ),
+            ])
+            ->withOptions(['verify' => true])
+            ->connectTimeout(5)
+            ->timeout(30);
     }
 
     private function featureLayerUrl(): string
     {
-        return config('services.arcgis.fire_incident_layer_url');
+        $url = rtrim(
+            (string) config(
+                'services.arcgis.fire_incident_layer_url'
+            ),
+            '/'
+        );
+
+        if ($url === '') {
+            throw new RuntimeException(
+                'ARCGIS_FIRE_INCIDENT_LAYER_URL is missing.'
+            );
+        }
+
+        return $url;
+    }
+
+    private function arcgisToken(): string
+    {
+        $token = (string) config('services.arcgis.token');
+
+        if ($token === '') {
+            throw new RuntimeException('ARCGIS_TOKEN is missing.');
+        }
+
+        return $token;
     }
 
     public function duplicateCheck(int $id): JsonResponse
@@ -244,24 +310,46 @@ class CadIntakeController extends Controller
             'spatialReference' => ['wkid' => 4326],
         ]);
 
-        $response = $this->arcgisHttp()->post(
-            $this->featureLayerUrl() . '/query',
-            [
-                'f' => 'json',
-                'token' => config('services.arcgis.token'),
-                'where' => $where,
-                'geometry' => $geometry,
-                'geometryType' => 'esriGeometryPoint',
-                'inSR' => 4326,
-                'spatialRel' => 'esriSpatialRelIntersects',
-                'distance' => 500,
-                'units' => 'esriSRUnit_Meter',
-                'outFields' => '*',
-                'returnGeometry' => 'true',
-            ]
-        );
+        try {
+            $response = $this->arcgisHttp()->post(
+                $this->featureLayerUrl() . '/query',
+                [
+                    'f' => 'json',
+                    'token' => $this->arcgisToken(),
+                    'where' => $where,
+                    'geometry' => $geometry,
+                    'geometryType' => 'esriGeometryPoint',
+                    'inSR' => 4326,
+                    'spatialRel' => 'esriSpatialRelIntersects',
+                    'distance' => 500,
+                    'units' => 'esriSRUnit_Meter',
+                    'outFields' => '*',
+                    'returnGeometry' => 'true',
+                ]
+            );
+        } catch (Throwable $exception) {
+            return response()->json([
+                'message' => 'Duplicate check failed.',
+                'error' => $exception->getMessage(),
+            ], 502);
+        }
 
-        $features = $response->json('features', []);
+        $payload = $response->json() ?? [];
+
+        if (
+            !$response->successful()
+            || isset($payload['error'])
+        ) {
+            return response()->json([
+                'message' => 'Duplicate check failed.',
+                'error' => $this->arcgisErrorMessage(
+                    $payload,
+                    $response->status()
+                ),
+            ], 502);
+        }
+
+        $features = $payload['features'] ?? [];
 
         return response()->json([
             'duplicate' => count($features) > 0,
@@ -301,5 +389,24 @@ class CadIntakeController extends Controller
             ->get();
 
         return response()->json($items);
+    }
+
+    private function arcgisErrorMessage(
+        array $payload,
+        int $httpStatus,
+        ?array $result = null
+    ): string {
+        $message = $result['error']['description']
+            ?? $result['error']['message']
+            ?? $payload['error']['message']
+            ?? 'ArcGIS request failed with HTTP ' . $httpStatus . '.';
+
+        $details = $payload['error']['details'] ?? [];
+
+        if (is_array($details) && $details !== []) {
+            $message .= ' ' . implode(' ', $details);
+        }
+
+        return trim($message);
     }
 }

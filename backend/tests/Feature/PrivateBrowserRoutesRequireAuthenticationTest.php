@@ -18,10 +18,16 @@ class PrivateBrowserRoutesRequireAuthenticationTest extends TestCase
             ['POST', '/api/cad/intakes/1/submit-to-brave'],
             ['GET', '/api/cad/queue'],
 
+            ['POST', '/api/fire-incidents'],
             ['PUT', '/api/fire-incidents/1'],
             ['DELETE', '/api/fire-incidents/1'],
 
+            ['POST', '/api/flood-incidents'],
+            ['PUT', '/api/flood-incidents/1'],
+            ['DELETE', '/api/flood-incidents/1'],
+
             ['GET', '/api/operator/public-reports'],
+            ['GET', '/api/operator/public-reports/1/photo'],
             ['POST', '/api/operator/public-reports/1/status'],
         ];
 
@@ -30,9 +36,10 @@ class PrivateBrowserRoutesRequireAuthenticationTest extends TestCase
                 ->assertUnauthorized();
         }
     }
+
     public function test_arcgis_token_is_not_exposed_by_a_public_endpoint(): void
-{
-    $this->getJson('/api/arcgis/token')
-        ->assertNotFound();
-}
+    {
+        $this->getJson('/api/arcgis/token')
+            ->assertNotFound();
+    }
 }

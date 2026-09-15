@@ -8,7 +8,7 @@
       >
         <div class="brand-logo">
           <img
-            src="/NiAT-light.png"
+            :src="niatLogoUrl"
             alt="NIAT Logo"
             class="logo-img"
           />
@@ -92,17 +92,6 @@
                 <span>Fire Dashboard</span>
               </RouterLink>
 
-              <RouterLink
-                to="/fire-list"
-                class="mobile-menu-item"
-                :class="{
-                  active: route.path.startsWith('/fire-list'),
-                }"
-                @click="menuOpen = false"
-              >
-                <FeatherIcon icon="list" />
-                <span>Fire Incidents List</span>
-              </RouterLink>
 
               <!-- Enable this when the Flood module is ready.
 
@@ -248,6 +237,9 @@ import {
 
 import FeatherIcon from '@/components/FeatherIcon.vue'
 import { useNotificationStore } from '@/stores/notificationStore'
+import { publicAssetUrl } from '@/utils/publicAssetUrl'
+
+const niatLogoUrl = publicAssetUrl('NiAT-light.png')
 
 const route = useRoute()
 const notificationStore = useNotificationStore()

@@ -13,6 +13,17 @@ class MobileAppUser extends Model
         'last_login_at',
     ];
 
+    protected $hidden = [
+        'api_token',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'last_login_at' => 'datetime',
+        ];
+    }
+
     public function identity()
     {
         return $this->belongsTo(BruneiIdentity::class, 'brunei_identity_id');

@@ -2,75 +2,139 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
+use App\Models\BruneiIdentity;
 use App\Models\MobileAppUser;
 use App\Models\PublicIncidentReport;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-
 
 class PublicIncidentReportController extends Controller
 {
-   private function getMobileUserFromToken(Request $request)
-    {
+    private function getMobileUserFromToken(
+        Request $request
+    ): ?MobileAppUser {
         $token = $request->bearerToken();
-        $hashedToken = $token ? hash('sha256', $token) : null;
 
-        $mobileUser = $hashedToken
-            ? MobileAppUser::where('api_token', $hashedToken)->first()
-            : null;
-
-        $identity = $mobileUser
-            ? \App\Models\BruneiIdentity::find($mobileUser->brunei_identity_id)
-            : null;
-
-        if (!$mobileUser) {
+        if (! $token) {
             return null;
         }
+
+        $mobileUser = MobileAppUser::where(
+            'api_token',
+            hash('sha256', $token)
+        )->first();
+
+        if (! $mobileUser) {
+            return null;
+        }
+
+        $identity = BruneiIdentity::find(
+            $mobileUser->brunei_identity_id
+        );
 
         $mobileUser->setRelation('identity', $identity);
 
         return $mobileUser;
     }
 
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
         $mobileUser = $this->getMobileUserFromToken($request);
 
-        if (!$mobileUser || !$mobileUser->identity) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthenticated.',
-            ], 401);
-        }
-
         $validated = $request->validate([
-            'location' => ['required', 'string', 'max:80'],
-            'incident_type' => ['required', 'string', 'max:100'],
-            'description' => ['required', 'string'],
-            'latitude' => ['required', 'numeric'],
-            'longitude' => ['required', 'numeric'],
-            'photo' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:15360'],
+            'location' => [
+                'required',
+                'string',
+                'max:80',
+            ],
+
+            'incident_type' => [
+                'required',
+                'string',
+                'max:100',
+            ],
+
+            'severity_level' => [
+                'nullable',
+                'in:Low,Medium,High,Critical',
+            ],
+
+            'description' => [
+                'required',
+                'string',
+                'max:5000',
+            ],
+
+            'latitude' => [
+                'required',
+                'numeric',
+                'between:-90,90',
+            ],
+
+            'longitude' => [
+                'required',
+                'numeric',
+                'between:-180,180',
+            ],
+
+            'photo' => [
+                'nullable',
+                'file',
+                'mimes:jpg,jpeg,png,webp',
+                'max:15360',
+            ],
         ]);
 
         $photoPath = null;
 
-
         if ($request->hasFile('photo')) {
-            $photoPath = $request->file('photo')->store('public_reports', 'public');
+            $photoPath = $request
+                ->file('photo')
+                ->store('public_reports', 'local');
+        }
+
+        $hasMobileIdentity =
+            $mobileUser !== null &&
+            $mobileUser->identity !== null;
+
+        $description = trim($validated['description']);
+
+        if (! empty($validated['severity_level'])) {
+            $description =
+                'Observed urgency: '.
+                $validated['severity_level'].
+                PHP_EOL.
+                PHP_EOL.
+                $description;
         }
 
         $report = PublicIncidentReport::create([
-            'mobile_app_user_id' => $mobileUser->id,
-            'brunei_identity_id' => $mobileUser->brunei_identity_id,
-            'reporter_ic_no' => $mobileUser->identity->ic_no,
-            'reporter_full_name' => $mobileUser->identity->full_name,
+            'mobile_app_user_id' => $hasMobileIdentity
+                ? $mobileUser->id
+                : null,
+
+            'brunei_identity_id' => $hasMobileIdentity
+                ? $mobileUser->brunei_identity_id
+                : null,
+
+            'reporter_ic_no' => $hasMobileIdentity
+                ? $mobileUser->identity->ic_no
+                : 'Not provided',
+
+            'reporter_full_name' => $hasMobileIdentity
+                ? $mobileUser->identity->full_name
+                : 'Public Website User',
 
             'district' => $validated['location'],
+
             'incident_type' => $validated['incident_type'],
-            'description' => $validated['description'],
+
+            'description' => $description,
+
             'latitude' => $validated['latitude'],
+
             'longitude' => $validated['longitude'],
+
             'photo_path' => $photoPath,
 
             'status' => 'PENDING',
@@ -78,29 +142,37 @@ class PublicIncidentReportController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Public incident report submitted for operator verification.',
-            'data' => $report,
+
+            'message' => 'Your report has been submitted for operator verification.',
+
+            'data' => [
+                'id' => $report->id,
+                'status' => $report->status,
+                'created_at' => $report->created_at,
+            ],
         ], 201);
     }
 
-    public function myReports(Request $request)
+    public function myReports(Request $request): JsonResponse
     {
         $mobileUser = $this->getMobileUserFromToken($request);
 
-        if (!$mobileUser) {
+        if (! $mobileUser) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthenticated.',
             ], 401);
         }
 
-            $reports = PublicIncidentReport::where(
-                'brunei_identity_id',
-                $mobileUser->brunei_identity_id
-            )
+        $reports = PublicIncidentReport::where(
+            'brunei_identity_id',
+            $mobileUser->brunei_identity_id
+        )
             ->latest()
             ->get()
-            ->map(function ($report) use ($request) {
+            ->map(function (
+                PublicIncidentReport $report
+            ): array {
                 return [
                     'id' => $report->id,
                     'district' => $report->district,
@@ -113,12 +185,15 @@ class PublicIncidentReportController extends Controller
                     'created_at' => $report->created_at,
                     'verified_at' => $report->verified_at,
                     'photo_path' => $report->photo_path,
+
                     'photo_url' => $report->photo_path
-                    ? 'https://' . $request->getHost() . '/storage/' . $report->photo_path
+                        ? asset(
+                            'storage/'.$report->photo_path
+                        )
                         : null,
                 ];
-                
-            });
+            })
+            ->values();
 
         return response()->json([
             'success' => true,

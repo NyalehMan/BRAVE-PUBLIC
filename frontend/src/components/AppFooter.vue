@@ -3,7 +3,7 @@
     <div class="footer-container">
       <div class="footer-left">
         <img
-          :src="isDark ? '/NiAT-dark.png' : '/NiAT-light.png'"
+          :src="isDark ? niatDarkLogoUrl : niatLightLogoUrl"
           alt="NIAT Logo"
           class="logo-imag"
         />
@@ -30,7 +30,7 @@
 
       <div class="footer-right">
         <img
-          :src="isDark ? '/observe-dark.png' : '/observe-light.png'"
+          :src="isDark ? observeDarkLogoUrl : observeLightLogoUrl"
           alt="Powered by OBSERVE"
           class="powered-logo"
         />
@@ -43,6 +43,12 @@
 <script setup>
 import { computed, ref, onMounted } from 'vue'
 import FeatherIcon from '@/components/FeatherIcon.vue'
+import { publicAssetUrl } from '@/utils/publicAssetUrl'
+
+const niatDarkLogoUrl = publicAssetUrl('NiAT-dark.png')
+const niatLightLogoUrl = publicAssetUrl('NiAT-light.png')
+const observeDarkLogoUrl = publicAssetUrl('observe-dark.png')
+const observeLightLogoUrl = publicAssetUrl('observe-light.png')
 
 const darkMode = ref(false)
 

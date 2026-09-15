@@ -18,10 +18,27 @@ class PublicIncidentReport extends Model
         'longitude',
         'photo_path',
         'status',
+        'submitted_to_brave',
+        'brave_incident_objectid',
+        'arcgis_submission_uuid',
+        'arcgis_submitted_at',
+        'arcgis_submission_error',
         'operator_notes',
         'verified_by',
         'verified_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'latitude' => 'float',
+            'longitude' => 'float',
+            'submitted_to_brave' => 'boolean',
+            'brave_incident_objectid' => 'integer',
+            'arcgis_submitted_at' => 'datetime',
+            'verified_at' => 'datetime',
+        ];
+    }
 
     public function mobileUser()
     {

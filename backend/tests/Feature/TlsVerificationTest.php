@@ -40,9 +40,15 @@ class TlsVerificationTest extends TestCase
 
                 if (
                     $contents !== false
-                    && str_contains(
-                        $contents,
-                        'withoutVerifying('
+                    && (
+                        str_contains(
+                            $contents,
+                            'withoutVerifying('
+                        )
+                        || preg_match(
+                            "/['\"]verify['\"]\s*=>\s*false/",
+                            $contents
+                        ) === 1
                     )
                 ) {
                     $relativePath = str_replace(

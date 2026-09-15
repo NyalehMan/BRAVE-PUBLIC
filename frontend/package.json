@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@arcgis/core": "^5.0.18",
+    "@maptiler/sdk": "^4.1.0",
+    "@maptiler/weather": "^4.0.1",
     "apexcharts": "^5.10.6",
     "axios": "^1.16.0",
     "bootstrap": "^5.3.8",
@@ -18,7 +20,6 @@
     "feather-icons": "^4.29.2",
     "lucide-vue-next": "^1.0.0",
     "pinia": "^3.0.4",
-    "recharts": "^3.8.1",
     "vue": "^3.5.32",
     "vue-chartjs": "^5.3.3",
     "vue-router": "^5.0.4",

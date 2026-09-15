@@ -41,19 +41,6 @@
         </span>
       </RouterLink>
 
-      <RouterLink
-        to="/fire-list"
-        class="nav-item"
-        :class="{ active: route.path.startsWith('/fire-list') }"
-        data-label="Fire Incident List"
-        aria-label="Fire Incident List"
-      >
-        <FeatherIcon icon="book" />
-
-        <span v-if="!collapsed" class="nav-label">
-          Fire Incident List
-        </span>
-      </RouterLink>
 
       <!--
       <RouterLink

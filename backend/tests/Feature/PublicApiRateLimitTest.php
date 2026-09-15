@@ -25,8 +25,15 @@ class PublicApiRateLimitTest extends TestCase
                 && in_array('POST', $route->methods(), true)
         );
 
+        $publicReports = $routes->first(
+            fn ($route) =>
+                $route->uri() === 'api/public/reports'
+                && in_array('POST', $route->methods(), true)
+        );
+
         $this->assertNotNull($mobileLogin);
         $this->assertNotNull($fireRoute);
+        $this->assertNotNull($publicReports);
 
         $this->assertContains(
             'throttle:mobile-login',
@@ -36,6 +43,11 @@ class PublicApiRateLimitTest extends TestCase
         $this->assertContains(
             'throttle:fire-route',
             $fireRoute->gatherMiddleware()
+        );
+
+        $this->assertContains(
+            'throttle:public-reports',
+            $publicReports->gatherMiddleware()
         );
     }
 
