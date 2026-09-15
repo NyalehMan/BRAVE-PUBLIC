@@ -11,6 +11,7 @@ COPY frontend/ ./
 
 ENV VITE_PUBLIC_DEPLOY=false
 ENV VITE_BASE_PATH=/
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 RUN --mount=type=secret,id=maptiler_key \
     test -s /run/secrets/maptiler_key && \
