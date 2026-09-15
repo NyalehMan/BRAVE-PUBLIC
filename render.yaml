@@ -1,0 +1,87 @@
+services:
+  - type: web
+    name: brave-public-api-nyalehman
+    runtime: docker
+    repo: https://github.com/NyalehMan/BRAVE-PUBLIC
+    branch: main
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    region: singapore
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: commit
+    healthCheckPath: /up
+    disk:
+      name: brave-public-storage
+      mountPath: /var/www/html/storage
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: APP_NAME
+        value: BRAVE
+      - key: APP_ENV
+        value: production
+      - key: APP_KEY
+        sync: false
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_URL
+        value: https://brave-public-api-nyalehman.onrender.com
+      - key: FRONTEND_URL
+        value: https://nyalehman.github.io/BRAVE-PUBLIC
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://nyalehman.github.io
+      - key: SANCTUM_STATEFUL_DOMAINS
+        value: nyalehman.github.io,brave-public-api-nyalehman.onrender.com
+      - key: SESSION_DRIVER
+        value: database
+      - key: SESSION_SECURE_COOKIE
+        value: "true"
+      - key: SESSION_SAME_SITE
+        value: none
+      - key: SESSION_PARTITIONED_COOKIE
+        value: "true"
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        fromDatabase:
+          name: brave-public-db
+          property: connectionString
+      - key: FILESYSTEM_DISK
+        value: local
+      - key: REPORT_PHOTO_DISK
+        value: local
+      - key: TESSERACT_PATH
+        value: /usr/bin/tesseract
+      - key: RUN_MIGRATIONS
+        value: "true"
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: info
+      - key: VITE_MAPTILER_API_KEY
+        sync: false
+      - key: ARCGIS_FIRE_INCIDENT_LAYER_URL
+        sync: false
+      - key: ARCGIS_FLOOD_INCIDENT_LAYER_URL
+        sync: false
+      - key: ARCGIS_FLOOD_WEBMAP_ID
+        value: 17813afa14a4419583dc2a136bf51d99
+      - key: ARCGIS_TOKEN
+        sync: false
+      - key: ARCGIS_REFERER
+        value: https://brave-public-api-nyalehman.onrender.com
+
+databases:
+  - name: brave-public-db
+    databaseName: brave_public
+    user: brave
+    region: singapore
+    plan: 0.1c-256mb
+    diskSizeGB: 1
+    ipAllowList: []

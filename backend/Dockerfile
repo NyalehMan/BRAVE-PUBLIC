@@ -12,10 +12,13 @@ COPY frontend/ ./
 ENV VITE_PUBLIC_DEPLOY=false
 ENV VITE_BASE_PATH=/
 ENV NODE_OPTIONS=--max-old-space-size=4096
+ARG VITE_MAPTILER_API_KEY
 
 RUN --mount=type=secret,id=maptiler_key \
-    test -s /run/secrets/maptiler_key && \
-    export VITE_MAPTILER_API_KEY="$(cat /run/secrets/maptiler_key)" && \
+    if [ -s /run/secrets/maptiler_key ]; then \
+        export VITE_MAPTILER_API_KEY="$(cat /run/secrets/maptiler_key)"; \
+    fi && \
+    test -n "${VITE_MAPTILER_API_KEY:-}" && \
     npm run build -- --outDir /build/public --emptyOutDir
 
 FROM composer:2 AS php_vendor
