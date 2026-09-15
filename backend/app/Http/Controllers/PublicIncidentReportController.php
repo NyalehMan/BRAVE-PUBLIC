@@ -90,7 +90,10 @@ class PublicIncidentReportController extends Controller
         if ($request->hasFile('photo')) {
             $photoPath = $request
                 ->file('photo')
-                ->store('public_reports', 'local');
+                ->store(
+                    'public_reports',
+                    config('filesystems.report_photos_disk', 'local')
+                );
         }
 
         $hasMobileIdentity =

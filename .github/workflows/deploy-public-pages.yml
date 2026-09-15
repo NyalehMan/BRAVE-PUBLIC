@@ -1,0 +1,80 @@
+name: Deploy BRAVE public view to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-public-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: ${{ vars.VITE_API_BASE_URL != '' }}
+    runs-on: ubuntu-latest
+    env:
+      VITE_PUBLIC_DEPLOY: "true"
+      VITE_BASE_PATH: "/BRAVE-PUBLIC/"
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+      VITE_MAPTILER_API_KEY: ${{ secrets.VITE_MAPTILER_API_KEY }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          test -n "$VITE_API_BASE_URL" || {
+            echo "Set the repository variable VITE_API_BASE_URL to the public Laravel API origin."
+            exit 1
+          }
+          test -n "$VITE_MAPTILER_API_KEY" || {
+            echo "Set the repository secret VITE_MAPTILER_API_KEY to a browser-restricted MapTiler key."
+            exit 1
+          }
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build public frontend
+        working-directory: frontend
+        run: npm run build -- --outDir dist --emptyOutDir
+
+      - name: Disable Jekyll processing
+        run: touch frontend/dist/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

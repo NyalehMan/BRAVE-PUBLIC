@@ -1,8 +1,10 @@
 import axios from 'axios'
 
+const productionBaseUrl = typeof window === 'undefined' ? '' : window.location.origin
+
 const configuredBaseUrl = (
   import.meta.env.VITE_API_BASE_URL ||
-  'http://127.0.0.1:8000'
+  (import.meta.env.DEV ? 'http://127.0.0.1:8000' : productionBaseUrl)
 )
   .trim()
   .replace(/\/+$/, '')

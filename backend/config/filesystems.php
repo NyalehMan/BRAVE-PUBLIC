@@ -15,6 +15,8 @@ return [
 
     'default' => env('FILESYSTEM_DISK', 'local'),
 
+    'report_photos_disk' => env('REPORT_PHOTO_DISK', 'local'),
+
     /*
     |--------------------------------------------------------------------------
     | Filesystem Disks

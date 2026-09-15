@@ -111,7 +111,16 @@ class PublicPsiController extends Controller
         $image = $this->findPsiImage($html);
         $imageBytes = $this->downloadPsiImage($image['url']);
         $ocrText = $this->runTesseract($imageBytes);
-        $values = $this->extractDistrictValues($ocrText);
+
+        try {
+            $values = $this->extractDistrictValues($ocrText);
+        } catch (RuntimeException) {
+            // Recent JASTRe artwork places large white readings on coloured
+            // circles. Whole-image OCR can see the district headings while
+            // missing those digits, so retry each district's reading area.
+            $values = $this->extractDistrictValuesFromImage($imageBytes);
+        }
+
         $updatedAtLabel = $this->extractUpdatedLabel($ocrText, $image['alt']);
 
         $readings = [];
@@ -410,6 +419,139 @@ class PublicPsiController extends Controller
         throw new RuntimeException(
             'OCR completed, but four district PSI values could not be identified.'
         );
+    }
+
+    /**
+     * Extract the four large readings from JASTRe's four-column PSI artwork.
+     * The blue channel cleanly separates white digits from green, yellow,
+     * orange, or red PSI circles without depending on the current category.
+     *
+     * @return array{0: int, 1: int, 2: int, 3: int}
+     */
+    private function extractDistrictValuesFromImage(string $imageBytes): array
+    {
+        if (! function_exists('imagecreatefromstring')) {
+            throw new RuntimeException(
+                'The GD extension is required for PSI image preprocessing.'
+            );
+        }
+
+        $source = @imagecreatefromstring($imageBytes);
+
+        if ($source === false) {
+            throw new RuntimeException('Unable to decode the JASTRe PSI image.');
+        }
+
+        $width = imagesx($source);
+        $height = imagesy($source);
+
+        if ($width < 400 || $height < 400) {
+            throw new RuntimeException('The JASTRe PSI image is unexpectedly small.');
+        }
+
+        $values = [];
+
+        try {
+            foreach (array_keys(self::DISTRICTS) as $index) {
+                $crop = imagecrop($source, [
+                    'x' => (int) floor($width * $index / 4),
+                    'y' => (int) floor($height * 0.48),
+                    'width' => (int) ceil($width / 4),
+                    'height' => (int) floor($height * 0.20),
+                ]);
+
+                if ($crop === false) {
+                    throw new RuntimeException('Unable to isolate a PSI district reading.');
+                }
+
+                try {
+                    $values[] = $this->readDistrictValue($crop);
+                } finally {
+                    imagedestroy($crop);
+                }
+            }
+        } finally {
+            imagedestroy($source);
+        }
+
+        return $values;
+    }
+
+    private function readDistrictValue(\GdImage $crop): int
+    {
+        $width = imagesx($crop);
+        $height = imagesy($crop);
+        $thresholded = imagecreatetruecolor($width, $height);
+        $black = imagecolorallocate($thresholded, 0, 0, 0);
+        $white = imagecolorallocate($thresholded, 255, 255, 255);
+
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                $blue = imagecolorat($crop, $x, $y) & 0xff;
+
+                imagesetpixel(
+                    $thresholded,
+                    $x,
+                    $y,
+                    $blue >= 220 ? $black : $white
+                );
+            }
+        }
+
+        $scaled = imagescale($thresholded, $width * 3, $height * 3);
+        imagedestroy($thresholded);
+
+        if ($scaled === false) {
+            throw new RuntimeException('Unable to enlarge a PSI district reading.');
+        }
+
+        $temporaryFile = tempnam(sys_get_temp_dir(), 'brave-psi-value-');
+
+        if ($temporaryFile === false) {
+            imagedestroy($scaled);
+
+            throw new RuntimeException('Unable to create a PSI crop file.');
+        }
+
+        try {
+            if (! imagepng($scaled, $temporaryFile)) {
+                throw new RuntimeException('Unable to save a PSI crop file.');
+            }
+
+            foreach (['10', '13'] as $pageSegmentationMode) {
+                $process = new Process([
+                    $this->tesseractBinary(),
+                    $temporaryFile,
+                    'stdout',
+                    '--psm',
+                    $pageSegmentationMode,
+                    '-l',
+                    'eng',
+                    '-c',
+                    'tessedit_char_whitelist=0123456789',
+                    '-c',
+                    'user_defined_dpi=300',
+                ]);
+                $process->setTimeout(15);
+                $process->run();
+
+                if (
+                    $process->isSuccessful()
+                    && preg_match('/\b(\d{1,3})\b/', $process->getOutput(), $match)
+                ) {
+                    $value = (int) $match[1];
+
+                    if ($value <= 500) {
+                        return $value;
+                    }
+                }
+            }
+        } finally {
+            imagedestroy($scaled);
+            @unlink($temporaryFile);
+        }
+
+        throw new RuntimeException('Unable to read a PSI district value.');
     }
 
     /** @return list<int> */

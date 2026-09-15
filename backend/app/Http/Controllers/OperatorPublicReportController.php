@@ -122,14 +122,17 @@ class OperatorPublicReportController extends Controller
     {
         $report = PublicIncidentReport::findOrFail($id);
         $path = str_replace('\\', '/', (string) $report->photo_path);
+        $disk = Storage::disk(
+            config('filesystems.report_photos_disk', 'local')
+        );
 
         abort_unless(
             preg_match('#^public_reports/[A-Za-z0-9._-]+$#', $path) === 1
-            && Storage::disk('local')->exists($path),
+            && $disk->exists($path),
             404
         );
 
-        return Storage::disk('local')->response(
+        return $disk->response(
             $path,
             null,
             [

@@ -120,7 +120,6 @@ class FireNewsController extends Controller
 
         try {
             $remoteResponse = Http::withOptions([
-                    'verify' => false,
                     'allow_redirects' => true,
                 ])
                 ->withHeaders([
@@ -318,7 +317,6 @@ class FireNewsController extends Controller
     {
         try {
             $response = Http::withOptions([
-                    'verify' => false,
                     'allow_redirects' => true,
                 ])
                 ->withHeaders([

@@ -10,7 +10,9 @@ Artisan::command('inspire', function () {
 
 Artisan::command('brave:secure-report-photos', function () {
     $publicDisk = Storage::disk('public');
-    $privateDisk = Storage::disk('local');
+    $privateDisk = Storage::disk(
+        config('filesystems.report_photos_disk', 'local')
+    );
     $moved = 0;
 
     foreach ($publicDisk->files('public_reports') as $path) {
