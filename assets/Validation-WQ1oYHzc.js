@@ -1,0 +1,1 @@
+import{A as o,Q as c,y as l,d as r}from"./arcgis-Bu9K0u8m.js";const d={validationContainer:"validation-container"},v=()=>{},$=({scale:i,status:t,id:n,icon:e,message:s,ref:a})=>r`<div class=${c(d.validationContainer)} ${l(a||v)}><calcite-input-message aria-live=polite .icon=${e} id=${n??o} .scale=${i} .status=${t}>${s}</calcite-input-message></div>`;export{$ as V};
