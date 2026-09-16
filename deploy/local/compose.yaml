@@ -1,0 +1,45 @@
+name: brave-public-local
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+      secrets:
+        - maptiler_key
+    restart: unless-stopped
+    env_file:
+      - ../../backend/.env
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: ${BRAVE_PUBLIC_URL:?BRAVE_PUBLIC_URL is required}
+      FRONTEND_URL: https://nyalehman.github.io
+      CORS_ALLOWED_ORIGINS: https://nyalehman.github.io
+      TRUSTED_PROXIES: "*"
+      SESSION_DRIVER: database
+      SESSION_ENCRYPT: "true"
+      SESSION_SECURE_COOKIE: "true"
+      SESSION_SAME_SITE: none
+      SESSION_PARTITIONED_COOKIE: "true"
+      SANCTUM_STATEFUL_DOMAINS: nyalehman.github.io,${BRAVE_PUBLIC_HOST:?BRAVE_PUBLIC_HOST is required}
+      DB_HOST: host.docker.internal
+      DB_PORT: "3306"
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+      FILESYSTEM_DISK: local
+      REPORT_PHOTO_DISK: local
+      RUN_MIGRATIONS: "true"
+      TESSERACT_PATH: /usr/bin/tesseract
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: info
+    ports:
+      - "127.0.0.1:${BRAVE_LOCAL_PORT:-8081}:8080"
+    volumes:
+      - ../../backend/storage:/var/www/html/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+secrets:
+  maptiler_key:
+    environment: VITE_MAPTILER_API_KEY

@@ -40,7 +40,6 @@ class PublicIncidentController extends Controller
                 $this->featureLayerUrl() . '/query',
                 [
                     'f' => 'json',
-                    'token' => $this->arcgisToken(),
                     'where' => "severity_level <> 'Resolved'",
                     'outFields' => '*',
                     'returnGeometry' => 'true',
@@ -158,17 +157,6 @@ class PublicIncidentController extends Controller
         }
 
         return $url;
-    }
-
-    private function arcgisToken(): string
-    {
-        $token = (string) config('services.arcgis.token');
-
-        if ($token === '') {
-            throw new RuntimeException('ARCGIS_TOKEN is missing.');
-        }
-
-        return $token;
     }
 
     private function calculateDistanceKm(
