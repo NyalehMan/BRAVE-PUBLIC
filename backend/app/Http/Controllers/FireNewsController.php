@@ -12,7 +12,7 @@ use Throwable;
 
 class FireNewsController extends Controller
 {
-    public const VERSION = 'bb-local-haze-20260910-3';
+    public const VERSION = 'bb-local-haze-20260922-4';
     private const BRUNEI_MAX_ARTICLE_AGE_DAYS = 120;
     private const BORNEO_MAX_ARTICLE_AGE_DAYS = 90;
     private const MAX_DISPLAY_DATE_SPREAD_DAYS = 45;
@@ -44,15 +44,12 @@ class FireNewsController extends Controller
                     $originalImage
                 );
 
-                if ($proxiedImage !== '') {
-                    $article['image'] = $proxiedImage;
-                } elseif ($originalImage !== '') {
-                    // Normal publisher images can be loaded directly. Only
-                    // Google attachment thumbnails need the Laravel proxy.
-                    $article['image'] = $originalImage;
-                } else {
-                    $article['image'] = '/images/news-placeholder.jpg';
-                }
+                $article['image'] = $proxiedImage !== ''
+                    ? $proxiedImage
+                    : $this->generatedArticleThumbnail(
+                        (string) ($article['title'] ?? ''),
+                        (string) ($article['source'] ?? '')
+                    );
 
                 unset($article['_timestamp']);
             }
@@ -106,21 +103,35 @@ class FireNewsController extends Controller
     }
 
     /**
-     * Serve Google News thumbnails through Laravel. Google marks its attachment
-     * responses as same-site, so a Vue app on a different localhost port is
-     * otherwise blocked by the browser before the <img> can render.
+     * Serve approved publisher and Google News images through Laravel. This
+     * avoids browser hot-linking restrictions and keeps the public frontend on
+     * a single, predictable image origin.
      */
     public function image(Request $request): Response
     {
         $remoteUrl = trim((string) $request->query('url', ''));
 
-        if (!$this->isAllowedGoogleThumbnail($remoteUrl)) {
+        if (!$this->isAllowedNewsImage($remoteUrl)) {
             return response('', 404);
         }
 
         try {
             $remoteResponse = Http::withOptions([
-                    'allow_redirects' => true,
+                    'allow_redirects' => [
+                        'max' => 2,
+                        'protocols' => ['https'],
+                        'on_redirect' => function (
+                            $request,
+                            $response,
+                            $uri
+                        ): void {
+                            if (!$this->isAllowedNewsImage((string) $uri)) {
+                                throw new \RuntimeException(
+                                    'News image redirect left the allowed hosts.'
+                                );
+                            }
+                        },
+                    ],
                 ])
                 ->withHeaders([
                     'User-Agent' =>
@@ -164,7 +175,7 @@ class FireNewsController extends Controller
 
     private function buildImageProxyUrl(string $remoteUrl): string
     {
-        if (!$this->isAllowedGoogleThumbnail($remoteUrl)) {
+        if (!$this->isAllowedNewsImage($remoteUrl)) {
             return '';
         }
 
@@ -197,6 +208,12 @@ class FireNewsController extends Controller
         return $scheme === 'https'
             && $host === 'news.google.com'
             && strpos($path, '/api/attachments/') === 0;
+    }
+
+    private function isAllowedNewsImage(string $url): bool
+    {
+        return $this->isAllowedGoogleThumbnail($url)
+            || $this->publisherForUrl($url) !== null;
     }
 
     /**
@@ -1473,7 +1490,10 @@ class FireNewsController extends Controller
 
         return response($svg, 200)
             ->header('Content-Type', 'image/svg+xml; charset=UTF-8')
-            ->header('Cache-Control', 'public, max-age=86400');
+            ->header('Cache-Control', 'public, max-age=86400')
+            ->header('Access-Control-Allow-Origin', '*')
+            ->header('Cross-Origin-Resource-Policy', 'cross-origin')
+            ->header('X-Content-Type-Options', 'nosniff');
     }
 
     private function buildArticleThumbnailSvg(

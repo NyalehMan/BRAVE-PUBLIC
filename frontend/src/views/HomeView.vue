@@ -2,7 +2,10 @@
   <div class="brave-home">
     <!-- HERO -->
     <section ref="heroRef" class="hero-card">
-      <div class="hero-bg"></div>
+      <div
+        class="hero-bg"
+        :style="{ backgroundImage: `url(${publicAsset('images/brave-hero.png')})` }"
+      ></div>
       <div class="hero-smoke smoke-one"></div>
       <div class="hero-smoke smoke-two"></div>
       <div class="hero-dark-overlay"></div>
@@ -154,6 +157,11 @@ import http from '@/api/http'
 const heroRef = ref(null)
 const newsRegion = ref('brunei')
 
+function publicAsset(path) {
+  const base = import.meta.env.BASE_URL || '/'
+  return `${base}${String(path).replace(/^\/+/, '')}`
+}
+
 function setNewsRegion(region) {
   newsRegion.value = region
   loadLatestNews()
@@ -162,25 +170,25 @@ function setNewsRegion(region) {
 const categories = [
   {
     title: 'Fire',
-    image: '/images/fire.jpg',
+    image: publicAsset('images/fire.jpg'),
     description: 'Real time fire event monitoring dashboard',
     to: '/fire',
   },
   {
     title: 'Flood',
-    image: '/images/flood.jpeg',
+    image: publicAsset('images/flood.jpeg'),
     description: 'Real-time flood updates and monitoring dashboard',
     to: '/flood',
   },
   {
     title: 'Wind',
-    image: '/images/wind.png',
+    image: publicAsset('images/wind.png'),
     description: 'Occurrence of gusty wind and daily forecast',
     to: '/wind',
   },
   {
     title: 'Landslide',
-    image: '/images/landslide.jpeg',
+    image: publicAsset('images/landslide.jpeg'),
     description: 'Landslide hotspots and hazard map for risk management',
     to: '/landslide',
   },
@@ -189,7 +197,7 @@ const categories = [
 const latestNews = ref([])
 const newsLoading = ref(false)
 const newsError = ref('')
-const newsPlaceholder = '/images/news-placeholder.jpg'
+const newsPlaceholder = publicAsset('images/news-placeholder.jpg')
 
 async function loadLatestNews() {
   newsLoading.value = true
@@ -311,7 +319,9 @@ onMounted(() => {
 .hero-bg {
   position: absolute;
   inset: -28px;
-  background: url('/images/brave-hero.png') center / cover no-repeat;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
   transform: translate3d(var(--move-x), var(--move-y), 0) scale(1.08)
     rotateX(var(--rotate-x)) rotateY(var(--rotate-y));
   transition: transform 0.18s ease-out;
