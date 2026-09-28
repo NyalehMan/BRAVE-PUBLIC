@@ -50,4 +50,8 @@ return [
         'path' => env('TESSERACT_PATH'),
     ],
 
+    'whatsapp' => [
+        'verify_token' => env('WHATSAPP_VERIFY_TOKEN'),
+    ],
+
 ];

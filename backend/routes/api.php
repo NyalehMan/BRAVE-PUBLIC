@@ -11,6 +11,7 @@ use App\Http\Controllers\PublicIncidentController;
 use App\Http\Controllers\PublicIncidentReportController;
 use App\Http\Controllers\PublicPsiController;
 use App\Http\Controllers\TideController;
+use App\Http\Controllers\WhatsAppWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/public/psi', PublicPsiController::class);
@@ -51,6 +52,26 @@ Route::get(
 Route::get(
     '/fire-news/image',
     [FireNewsController::class, 'image']
+);
+
+/*
+|--------------------------------------------------------------------------
+| Public Integrations
+|--------------------------------------------------------------------------
+|
+| Meta must be able to verify and deliver WhatsApp webhook requests without
+| a BRAVE browser session, so these routes must remain outside auth groups.
+|
+*/
+
+Route::get(
+    '/integrations/whatsapp/webhook',
+    [WhatsAppWebhookController::class, 'verify']
+);
+
+Route::post(
+    '/integrations/whatsapp/webhook',
+    [WhatsAppWebhookController::class, 'receive']
 );
 
 /*
@@ -196,4 +217,5 @@ Route::middleware('auth:sanctum')->group(function () {
         '/flood-incidents/{objectId}',
         [FloodIncidentController::class, 'destroy']
     )->whereNumber('objectId');
+
 });
