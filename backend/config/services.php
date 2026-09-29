@@ -52,6 +52,15 @@ return [
 
     'whatsapp' => [
         'verify_token' => env('WHATSAPP_VERIFY_TOKEN'),
+        'app_secret' => env('WHATSAPP_APP_SECRET'),
+        'access_token' => env('WHATSAPP_ACCESS_TOKEN'),
+        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+        'graph_api_version' => env(
+            'WHATSAPP_GRAPH_API_VERSION',
+            'v23.0'
+        ),
+        'send_replies' => env('WHATSAPP_SEND_REPLIES', true),
+        'media_max_bytes' => 15 * 1024 * 1024,
     ],
 
 ];
