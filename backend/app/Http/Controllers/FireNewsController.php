@@ -8,11 +8,12 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 class FireNewsController extends Controller
 {
-    public const VERSION = 'bb-local-haze-20260922-4';
+    public const VERSION = 'bb-article-thumbnails-20261020-1';
     private const BRUNEI_MAX_ARTICLE_AGE_DAYS = 120;
     private const BORNEO_MAX_ARTICLE_AGE_DAYS = 90;
     private const MAX_DISPLAY_DATE_SPREAD_DAYS = 45;
@@ -210,6 +211,20 @@ class FireNewsController extends Controller
             && strpos($path, '/api/attachments/') === 0;
     }
 
+    private function isAllowedGoogleNewsArticle(string $url): bool
+    {
+        if ($url === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+
+        $parts = parse_url($url);
+
+        return is_array($parts)
+            && strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+            && strtolower((string) ($parts['host'] ?? '')) === 'news.google.com'
+            && str_starts_with((string) ($parts['path'] ?? ''), '/rss/articles/');
+    }
+
     private function isAllowedNewsImage(string $url): bool
     {
         return $this->isAllowedGoogleThumbnail($url)
@@ -269,13 +284,100 @@ class FireNewsController extends Controller
             return [];
         }
 
-        // Preserve the existing thumbnail and image-proxy behaviour.
+        // Borneo Bulletin's RSS feed can expose the article title and link
+        // while leaving both description and content empty. Fetch the
+        // selected article pages so their canonical og:image can still be
+        // used before falling back to Google News or a generated card.
+        $articles = $this->applyArticlePageImages($articles);
+
+        // Preserve the existing Google thumbnail fallback and image proxy.
         $needsImages = array_filter($articles, static function (array $article): bool {
             return empty($article['image']);
         });
         return $needsImages !== []
             ? $this->applyImageMap($articles, $this->fetchGoogleImageMapSafely($region))
             : $articles;
+    }
+
+    private function applyArticlePageImages(array $articles): array
+    {
+        $lookups = [];
+
+        foreach ($articles as $index => $article) {
+            $url = (string) ($article['url'] ?? '');
+
+            if (!empty($article['image'])) {
+                continue;
+            }
+
+            if ($this->publisherForUrl($url) !== null) {
+                $lookups[$index] = ['url' => $url, 'verify_title' => false];
+                continue;
+            }
+
+            if ($this->isAllowedGoogleNewsArticle($url)
+                && (string) ($article['source'] ?? '') === 'Borneo Bulletin') {
+                $slug = Str::slug((string) ($article['title'] ?? ''));
+
+                if ($slug !== '') {
+                    $lookups[$index] = [
+                        'url' => 'https://borneobulletin.com.bn/' . $slug . '/',
+                        'verify_title' => true,
+                    ];
+                }
+            }
+        }
+
+        if ($lookups === []) {
+            return $articles;
+        }
+
+        $urls = array_map(
+            static fn (array $lookup): string => $lookup['url'],
+            $lookups
+        );
+        $responses = $this->fetchResponses($urls);
+
+        foreach ($lookups as $index => $lookup) {
+            $url = $lookup['url'];
+            $response = $responses[$index] ?? null;
+            $this->recordSourceResult($url, $response, 'article-thumbnail');
+
+            if (!$this->isSuccessfulResponse($response)) {
+                continue;
+            }
+
+            $details = $this->articleDetailsFromHtml($response->body());
+            $image = (string) ($details['image'] ?? '');
+
+            if ($lookup['verify_title']) {
+                $expectedTitle = $this->normaliseTitleKey(
+                    (string) ($articles[$index]['title'] ?? '')
+                );
+                $actualTitle = $this->normaliseTitleKey(
+                    (string) ($details['title'] ?? '')
+                );
+
+                if ($expectedTitle === ''
+                    || ($actualTitle !== $expectedTitle
+                        && !str_starts_with(
+                            $actualTitle,
+                            $expectedTitle . ' borneo bulletin'
+                        ))) {
+                    continue;
+                }
+            }
+
+            if ($this->isAllowedNewsImage($image)) {
+                $articles[$index]['image'] = $image;
+
+                if ($lookup['verify_title']) {
+                    $articles[$index]['url'] = $url;
+                }
+            }
+        }
+
+        return $articles;
     }
 
     /**
