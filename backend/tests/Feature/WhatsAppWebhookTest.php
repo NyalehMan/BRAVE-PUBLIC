@@ -8,6 +8,7 @@ use App\Models\WhatsAppReportDraft;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class WhatsAppWebhookTest extends TestCase
@@ -47,14 +48,16 @@ class WhatsAppWebhookTest extends TestCase
         )->assertForbidden();
     }
 
-    public function test_meta_can_post_a_webhook_without_authentication(): void
+    public function test_webhook_post_fails_closed_without_an_app_secret(): void
     {
+        config()->set('services.whatsapp.app_secret', '');
+
         $this->postJson('/api/integrations/whatsapp/webhook', [
             'object' => 'whatsapp_business_account',
             'entry' => [],
         ])
-            ->assertOk()
-            ->assertExactJson(['received' => true]);
+            ->assertStatus(503)
+            ->assertExactJson(['received' => false]);
     }
 
     public function test_description_and_location_create_one_pending_report(): void
@@ -85,7 +88,7 @@ class WhatsAppWebhookTest extends TestCase
             ],
         ]);
 
-        $this->postJson('/api/integrations/whatsapp/webhook', $payload)
+        $this->postSignedPayload($payload)
             ->assertOk()
             ->assertExactJson(['received' => true]);
 
@@ -108,7 +111,7 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertSame(0, WhatsAppReportDraft::query()->count());
         $this->assertSame(2, WhatsAppInboundMessage::query()->count());
 
-        $this->postJson('/api/integrations/whatsapp/webhook', $payload)
+        $this->postSignedPayload($payload)
             ->assertOk();
 
         $this->assertSame(1, PublicIncidentReport::query()->count());
@@ -117,8 +120,7 @@ class WhatsAppWebhookTest extends TestCase
 
     public function test_an_incomplete_report_is_kept_as_a_draft(): void
     {
-        $this->postJson(
-            '/api/integrations/whatsapp/webhook',
+        $this->postSignedPayload(
             $this->payload([[
                 'from' => '6738123456',
                 'id' => 'wamid.draft',
@@ -191,7 +193,7 @@ class WhatsAppWebhookTest extends TestCase
             ],
         ]);
 
-        $this->postJson('/api/integrations/whatsapp/webhook', $payload)
+        $this->postSignedPayload($payload)
             ->assertOk();
 
         $report = PublicIncidentReport::query()->sole();
@@ -210,6 +212,18 @@ class WhatsAppWebhookTest extends TestCase
             'object' => 'whatsapp_business_account',
             'entry' => [],
         ], JSON_THROW_ON_ERROR);
+
+        $this->call(
+            'POST',
+            '/api/integrations/whatsapp/webhook',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            $body
+        )
+            ->assertUnauthorized()
+            ->assertExactJson(['received' => false]);
 
         $this->call(
             'POST',
@@ -275,5 +289,30 @@ class WhatsAppWebhookTest extends TestCase
                 ]],
             ]],
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function postSignedPayload(
+        array $payload,
+        string $appSecret = 'test-app-secret'
+    ): TestResponse {
+        config()->set('services.whatsapp.app_secret', $appSecret);
+        $body = json_encode($payload, JSON_THROW_ON_ERROR);
+        $signature = 'sha256='.hash_hmac('sha256', $body, $appSecret);
+
+        return $this->call(
+            'POST',
+            '/api/integrations/whatsapp/webhook',
+            [],
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_X_HUB_SIGNATURE_256' => $signature,
+            ],
+            $body
+        );
     }
 }

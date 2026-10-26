@@ -47,7 +47,22 @@ class WhatsAppWebhookController extends Controller
         Request $request,
         WhatsAppIncidentService $incidents
     ): JsonResponse {
-        if (! $this->hasValidSignature($request)) {
+        $appSecret = trim((string) config(
+            'services.whatsapp.app_secret',
+            ''
+        ));
+
+        if ($appSecret === '') {
+            Log::error(
+                'WhatsApp webhook delivery is disabled because the app secret is not configured.'
+            );
+
+            return response()->json([
+                'received' => false,
+            ], 503);
+        }
+
+        if (! $this->hasValidSignature($request, $appSecret)) {
             Log::warning('WhatsApp webhook signature was rejected.');
 
             return response()->json([
@@ -67,19 +82,11 @@ class WhatsAppWebhookController extends Controller
         ]);
     }
 
-    private function hasValidSignature(Request $request): bool
+    private function hasValidSignature(
+        Request $request,
+        string $appSecret
+    ): bool
     {
-        $appSecret = trim((string) config(
-            'services.whatsapp.app_secret',
-            ''
-        ));
-
-        // Meta's app secret is optional for local development. Once it is
-        // configured, every production callback must have a valid signature.
-        if ($appSecret === '') {
-            return true;
-        }
-
         $receivedSignature = trim((string) $request->header(
             'X-Hub-Signature-256',
             ''
